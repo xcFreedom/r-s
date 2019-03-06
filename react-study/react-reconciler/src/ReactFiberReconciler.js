@@ -9,7 +9,9 @@ import {
   unbatchedUpdates,
   requestCurrentTime,
   computeExpirationForFiber,
+  flushPassiveEffects,
 } from './ReactFiberScheduler';
+import { createUpdate, enqueueUpdate } from './ReactUpdateQueue';
 
 /**
  * 
@@ -52,6 +54,35 @@ export function updateContainerAtExpirationTime(element, container, parentCompon
   } else {
     container.pendingContext = context;
   }
+
+  return scheduleRootUpdate(current, element, expirationTime, callback);
+}
+
+
+/**
+ * 调度Root更新
+ * @param {Fiber} current 
+ * @param {ReactNodeList} element 
+ * @param {ExpirationTime} expirationTime 
+ * @param {Function} [callback] 
+ */
+function scheduleRootUpdate(current, element, expirationTime, callback) {
+  if (__DEV__) {
+    // ...
+  }
+  const update = createUpdate(expirationTime);
+  // React DevTools目前依赖此属性
+  update.payload = { element };
+
+  callback = callback === undefined ? null : callback;
+  if (callback !== null) {
+    update.callback = callback;
+  }
+
+  flushPassiveEffects();
+  enqueueUpdate(current, update);
+  scheduleWork(current, expirationTime);
+
 }
 
 /**
