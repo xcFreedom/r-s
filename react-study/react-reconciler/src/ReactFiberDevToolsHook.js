@@ -1,0 +1,1 @@
+export const isDevToolsPersent = false; // 不考虑开发模式

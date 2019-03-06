@@ -1,0 +1,12 @@
+export const ELEMENT_NODE                = 1; // 元素节点
+export const ATTR_NODE                   = 2; // 属性节点
+export const TEXT_NODE                   = 3; // 文本节点
+export const CDATASECTION_NODE           = 4; // 文档的CDATA部分
+export const ENTITY_REFERENCE_NODE       = 5; // 实体引用
+export const ENTITY_NODE                 = 6; // 实体
+export const PROCESSING_INSTRUCTION_NODE = 7; // 处理指令
+export const COMMENT_NODE                = 8; // 注释节点
+export const DOCUMENT_NODE               = 9; // DOM树根节点
+export const DOCUMENT_TYPE_NODE          = 10; // 向为文档定义的实体提供接口
+export const DOCUMENT_FRAGMENT_NODE      = 11; // fragment节点
+export const NOTATION_NODE               = 12; // DTD中声明的符号
