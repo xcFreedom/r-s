@@ -10,7 +10,8 @@ import {
   unstable_IdlePriority as IdlePriority,
 } from '../../scheduler';
 import {
-  now
+  now,
+  noTimeout,
 } from './ReactFiberHostConfig';
 import {
   markPendingPriorityLevel,
@@ -21,6 +22,7 @@ import {
 import {
   enableSchedulerTracing
 } from '../../shared/ReactFeatureFlags';
+import ReactSharedInternals from '../../shared/ReactSharedInternals';
 import {
   recordScheduleUpdate
 } from './ReactDebugFiberPerf';
@@ -33,6 +35,9 @@ import {
 } from './ReactFiberExpirationTime';
 import { ConcurrentMode, NoContext } from './ReactTypeOfMode';
 import { unwindInterruptedWork } from './ReactFiberUnwindWork';
+import { ContextOnlyDispatcher } from './ReactFiberHooks';
+
+const { ReactCurrentDispatcher, ReactCurrentOwner } = ReactSharedInternals;
 
 let isWorking      = false;
 
@@ -51,6 +56,7 @@ let interruptedBy = null;
 
 function flushPassiveEffects() {
   if (passiveEffectCallbackHandle !== null) {
+    // TODO
     cancelPassiveEffects(passiveEffectCallbackHandle);
   }
 }
@@ -63,6 +69,24 @@ function resetStack() {
       interruptedWork = interruptedWork.return;
     }
   }
+}
+
+
+/**
+ * 
+ * @param {FiberRoot} root 
+ * @param {Boolean} isYieldy 
+ */
+function renderRoot(root, isYieldy) {
+  flushPassiveEffects();
+
+  isWorking = true;
+  const previousDispatcher = ReactCurrentDispatcher.current;
+  ReactCurrentDispatcher.current = ContextOnlyDispatcher;
+  
+  const expirationTime = root.nextExpirationTimeToWorkOn;
+
+  // 检查是否从一个新的堆栈开始，或者是否从以前生成的工作中恢复。
 }
 
 /**
@@ -376,6 +400,22 @@ function findHighestPriorityRoot() {
           root.nextScheduledRoot = null;
         }
         root = previousScheduledRoot.nextScheduledRoot;
+      } else {
+        if (remainingExpirationTime > highestPriorityWork) {
+          // 更新优先级到更高
+          highestPriorityWork = remainingExpirationTime;
+          highestPriorityRoot = root;
+        }
+        if (root === lastScheduledRoot) {
+          break;
+        }
+        if (highestPriorityWork === Sync) {
+          // 根据定义Sync是最高优先级，因此可以停止搜索
+          break;
+        }
+
+        previousScheduledRoot = root;
+        root = root.nextScheduledRoot;
       }
     }
   }
@@ -414,7 +454,22 @@ function performWorkOnRoot(root, expirationTime, isYieldy) {
 
   // 检查是同步工作还是异步工作
   if (!isYieldy) {
+    // 不断的冲洗工作
+    // 非生产性工作并不一定意味着过期的工作。renderer可能希望在不生产的情况下执行一些工作，但也不需要root完成（通过触发placeholders）
     let finishedWork = root.finishedWork;
+    if (finishedWork !== null) {
+      // TODO
+    } else {
+      root.finishedWork = null;
+      // 如果这个root以前挂起，清除它现有的超时，因为我们将再次尝试render
+      const timeoutHandle = root.timeoutHandle;
+      if (timeoutHandle !== noTimeout) {
+        // TODO
+      }
+      renderRoot(root, isYieldy);
+    }
+  } else {
+    // TODO
   }
 }
 
@@ -426,6 +481,18 @@ function performSyncWork() {
 function performWork(minExpirationTime, isYieldy) {
   // 继续在root上工作，直到没有更多工作，或者有更高优先级的时间。
   findHighestPriorityRoot();
+
+  if (isYieldy) {
+    // TODO
+  } else {
+    while(
+      nextFlushedRoot !== null &&
+      nextFlushedExpirationTime !== NoWork &&
+      minExpirationTime <= nextFlushedExpirationTime
+    ) {
+      performWorkOnRoot(nextFlushedRoot, nextFlushedExpirationTime, false);
+    }
+  }
 }
 
 export {
@@ -433,4 +500,5 @@ export {
   unbatchedUpdates,
   requestCurrentTime,
   flushPassiveEffects,
+  scheduleWork,
 };

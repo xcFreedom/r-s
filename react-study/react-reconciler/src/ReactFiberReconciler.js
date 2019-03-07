@@ -8,6 +8,7 @@ import { createFiberRoot } from './ReactFiberRoot';
 import {
   unbatchedUpdates,
   requestCurrentTime,
+  scheduleWork,
   computeExpirationForFiber,
   flushPassiveEffects,
 } from './ReactFiberScheduler';

@@ -163,6 +163,20 @@ ReactWork.prototype.then = function(onCommit) {
   callbacks.push(onCommit);
 }
 
+ReactWork.prototype._onCommit = function() {
+  if (this._didCommit) {
+    return;
+  }
+  this._didCommit = true;
+  const callbacks = this._callbacks;
+  if (callbacks === null) {
+    return;
+  }
+  for (let i = 0; i < callbacks.length; i++) {
+    callbacks[i]();
+  }
+}
+
 //----------------------------------------------------------------- ReactWork end --------------------------------------------------
 
 //----------------------------------------------------------------- ReactRoot start ------------------------------------------------
