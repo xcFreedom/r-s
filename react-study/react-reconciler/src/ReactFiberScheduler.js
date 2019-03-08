@@ -24,8 +24,13 @@ import {
 } from '../../shared/ReactFeatureFlags';
 import ReactSharedInternals from '../../shared/ReactSharedInternals';
 import {
-  recordScheduleUpdate
+  recordScheduleUpdate,
+  startWorkLoopTimer,
+  startWorkTimer,
 } from './ReactDebugFiberPerf';
+import {
+  createWorkInProgress,
+} from './ReactFiber';
 import {
   NoWork,
   Sync,
@@ -44,8 +49,15 @@ let isWorking      = false;
 // 正在开展的下一项正在进行的工作
 let nextUnitOfWork = null; // Fiber | null
 let nextRoot       = null; // FiberRoot | null
+// 当前渲染工作的时间
+let nextRenderExpirationTime    = NoWorkl // ExpirationTime
+let nextLatestAbsoluteTimeoutMs = -1;
+let nextRenderDidError          = false;
 
-let isCommitting  = false;
+// 下一在提交中产生effect的fiber
+let nextEffect                  = null;
+
+let isCommitting                = false;
 let passiveEffectCallbackHandle = null;
 
 // 当前渲染工作的时间
@@ -63,11 +75,37 @@ function flushPassiveEffects() {
 
 function resetStack() {
   if (nextUnitOfWork !== null) {
-    let interruptedWork = nextUnitOfWork.return;
-    while (interruptedWork !== null) {
-      unwindInterruptedWork(interruptedWork);
-      interruptedWork = interruptedWork.return;
+    // TODO
+  }
+
+  nextRoot = null;
+  nextRenderExpirationTime = NoWork;
+  nextLatestAbsoluteTimeoutMs = -1;
+  nextRenderDidError = false;
+  nextUnitOfWork = null;
+}
+
+/**
+ * 执行工作单元
+ * @param {Fiber} workInProgress 
+ * @returns {Fiber}
+ */
+function performUnitOfWork(workInProgress) {
+  // The current, flushed, state of the fiber is the alternate
+  // 理想情况下， 不应该依赖于此，但是依赖于此意味者我们不需要对正在进行的工作进行额外的研究
+  const current = workInProgress.alternate;
+
+  // 看看开始这项工作是否会产生更多的工作
+  startWorkTimer(workInProgress);
+}
+
+function workLoop(isYieldy) {
+  if (!isYieldy) {
+    while (nextUnitOfWork !== null) {
+      nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
     }
+  } else {
+    // TODO
   }
 }
 
@@ -87,6 +125,59 @@ function renderRoot(root, isYieldy) {
   const expirationTime = root.nextExpirationTimeToWorkOn;
 
   // 检查是否从一个新的堆栈开始，或者是否从以前生成的工作中恢复。
+  if (
+    expirationTime !== nextRenderExpirationTime ||
+    root !== nextRoot ||
+    nextUnitOfWork === null
+  ) {
+    // 重置堆栈，从root开始工作
+    resetStack();
+    nextRoot = root;
+    nextRenderExpirationTime = expirationTime;
+    nextUnitOfWork = createWorkInProgress(next.current, null, nextRenderExpirationTime);
+    root.pendingCommitExpirationTime = NoWork;
+
+    if (enableSchedulerTracing) {
+      // 确定这批工作当前包括哪些交互，以便我们可以准确地确定花在它上面的时间，并将在render节点触发的级联工作与之关联
+      const interactions = new Set();
+      root.pendingInteractionMap.forEach((scheduledInteractions, scheduledExpirationTime) => {
+        if (scheduledExpirationTime >= expirationTime) {
+          scheduledInteractions.forEach(interaction => interactions.add(interaction));
+        }
+      });
+
+      // 把当前的interactions存储在FiberRoot上，原因如下：
+      // 我们可以在renderRoot()这样的热函数中重用它，而不需要重新计算它。
+      // 我们还将在commitWork()中使用它来传递给任何Profiler onRender()钩子
+      // 这还为DevTools提供了在调用onCommitRoot()钩子时访问它的方法。
+      root.memoizedInteractions = interactions;
+
+      if (interactions.size > 0) {
+        const subscriber = __subscriberRef.current;
+        if (subscriber !== null) {
+          // TODO
+        }
+      }
+    }
+  }
+
+  let prevInteractions = null; // Set<Interactions>
+  if (enableSchedulerTracing) {
+    prevInteractions = __interactionsRef.current;
+    __interactionsRef.current = root.memoizedInteractions;
+  }
+
+  let didFatal = false;
+
+  startWorkLoopTimer(nextUnitOfWork);
+
+  do {
+    try {
+      workLoop(isYieldy);
+    } catch (thrownValue) {
+
+    }
+  } while (true)
 }
 
 /**

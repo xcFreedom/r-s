@@ -43,7 +43,7 @@ function FiberNode(tag, pendingProps, key, mode) {
   this.memoizedProps = null;
   this.updateQueue = null;
   this.memoizedState = null;
-  this.firstContextDependency = null;
+  this.contextDependencies = null;
 
   this.mode = mode;
 
@@ -82,6 +82,50 @@ function FiberNode(tag, pendingProps, key, mode) {
  */
 const createFiber = function(tag, pendingProps, key, mode) {
   return new FiberNode(tag, pendingProps, key, mode);
+}
+
+/**
+ * 被用于创建一个交替工作的Fiber
+ * @param {Fiber} current 
+ * @param {any} pendingProps 
+ * @param {ExpirationTime} expirationTime 
+ * @returns {Fiber}
+ */
+export function createWorkInProgress(current, pendingProps, expirationTime) {
+  let workInProgress = current.alternate;
+  if (workInProgress === nul) {
+    // 我们使用双缓冲池技术，因为我们知道我们最多只需要一个树的两个版本
+    // 我们汇集了我们可以重用的“其他”未使用节点。
+    // 这样做是为了避免给从不更新的内容分配额外的对象
+    // 它还允许我们在需要的时候回收内存
+    workInProgress = createFiber(current.tag, pendingProps, current.key, current.mode);
+    workInProgress.elementType = current.elementType;
+    workInProgress.type = current.type;
+    workInProgress.stateNode = current.stateNode;
+  } else {
+    // TODO
+  }
+
+  workInProgress.childExpirationTime = current.childExpirationTime;
+  workInProgress.expirationTime = current.expirationTimel
+
+  workInProgress.child = current.child;
+  workInProgress.memoizedProps = current.memoizedProps;
+  workInProgress.memoizedState = current.memoizedState;
+  workInProgress.updateQueue = current.updateQueue;
+  workInProgress.contextDependencies = current.contextDependencies;
+
+  // 这些将在父进程的reconciliation被充血
+  workInProgress.sibling = current.sibling;
+  workInProgress.index = current.index;
+  workInProgress.ref = current.ref;
+
+  if (enableProfilerTimer) {
+    workInProgress.selfBaseDuration = current.selfBaseDuration;
+    workInProgress.treeBaseDuration = current.treeBaseDuration;
+  }
+
+  return workInProgress;
 }
 
 

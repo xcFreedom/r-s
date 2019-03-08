@@ -19,6 +19,12 @@ function popContext(fiber) {
   pop(contextStackCursor, fiber);
 }
 
+function popTopLevelContextObject(fiber) {
+  pop(didPerformWorkStackCursor, fiber);
+  pop(contextStackCursor, fiber);
+}
+
 export {
-  popContext
+  popContext,
+  popTopLevelContextObject,
 };

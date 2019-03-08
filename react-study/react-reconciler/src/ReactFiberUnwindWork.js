@@ -11,6 +11,7 @@ import {
 import { popHostContainer } from './ReactFiberHostContext';
 import {
   popContext as popLegacyContext,
+  popTopLevelContextObject as popTopLevelLegacyContextObject,
 } from './ReactFiberContext';
 
 /**
@@ -28,7 +29,8 @@ function unwindInterruptedWork(interruptedWork) {
     }
     case HostRoot: {
       popHostContainer(interruptedWork);
-
+      popTopLevelLegacyContextObject(interruptedWork);
+      break;
     }
   }
 }
