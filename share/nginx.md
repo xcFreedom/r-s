@@ -129,7 +129,7 @@
           root   /usr/share/nginx/html;
       }
 
-      
+
       # proxy the PHP scripts to Apache listening on 127.0.0.1:80
       #
       #location ~ \.php$ {
@@ -152,3 +152,67 @@
       #}
     }
    ```
+
+9. 启动Nginx服务
+    * nginx直接启动
+       ```
+        nginx
+       ```
+    * 使用systemctl命令启动（Linux命令启动，这种方法无论启动什么服务都是一样的，只是换一下服务的名字）
+       ```
+        systemctl start nginx.service
+       ```
+
+10. 查看Nginx服务
+    ```
+      ps aux | grep nginx
+    ```
+
+11. 停止Nginx服务的四种方法
+    1. 立即停止服务
+       ```
+        nginx -s stop
+       ```
+    2. 从容停止服务
+       ```
+        nginx -s quit
+       ```
+    3. killall杀死进程
+       ```
+        killall nginx
+       ```
+    4. systemctl停止
+       ```
+        systemctl stop nginx.service
+       ```
+
+12. 重启Nginx服务
+    1. systemctl重启
+       ```
+        systemctl restart nginx.service
+       ```
+    2. 重新载入配置文件
+       ```
+        nginx -s reload
+       ```
+
+## 访问控制
+```
+  location / {
+    deny  ***.***.***.*** # 禁止访问
+    allow ***.***.***.*** # 允许访问
+  }
+```
+在同一个块下的两个权限指令，先出现的设置会覆盖后出现的设置
+
+## Nginx设置虚拟主机
+
+虚拟主机是指在一台物理主机服务器上划分出多个磁盘空间，每个磁盘空间都是一个虚拟主机，每台虚拟主机都可以对外提供Web服务，并且互不干扰。在外间看来，虚拟主机就是一台独立的服务器主机
+
+1. 基于端口号配置虚拟主机。原理就是Nginx监听多个端口，根据不同的端口号，来区别不同的网站
+
+
+## 查看配置文件花括号对应
+
+1. ```grep -Ei "\{|\}" nginx.conf```
+2. ```grep -Ei "\{|\}" nginx.cong | cat -A```
