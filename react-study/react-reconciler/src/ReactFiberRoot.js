@@ -48,28 +48,28 @@ export function createFiberRoot(containerInfo, isConcurrent, hydrate) {
     root = {
       current: uninitializedFiber,
       containerInfo: containerInfo,
-      pendingChildren: null,
+      pendingChildren: null, // 等待的children
 
       pingCache: null,
 
-      earliestPendingTime: NoWork,
-      latestPendingTime: NoWork,
-      earliestSuspendedTime: NoWork,
-      latestSuspendedTime: NoWork,
-      latestPingedTime: NoWork,
+      earliestPendingTime: NoWork, // 最早更新时间
+      latestPendingTime: NoWork,   // 最后更新时间
+      earliestSuspendedTime: NoWork, // 最早暂停时间 这里的Suspended是否与React.Suspense有关联？
+      latestSuspendedTime: NoWork,  // 最后暂停时间
+      latestPingedTime: NoWork,    // 
 
       didError: false,
 
-      pendingCommitExpirationTime: NoWork,
-      finishedWork: null,
-      timeoutHandle: noTimeout,
+      pendingCommitExpirationTime: NoWork, // 等待提交的过期时间，这里的Commit是否对应ReactWork？
+      finishedWork: null,       // 完成work
+      timeoutHandle: noTimeout, // 超时handle
       context: null,
       pendingContext: null,
       hydrate,
-      nextExpirationTimeToWorkOn: NoWork,
-      expirationTime: NoWork,
+      nextExpirationTimeToWorkOn: NoWork, // work开始的下一个过期时间
+      expirationTime: NoWork, // 国旗时间
       firstBatch: null,
-      nextScheuledRoot: null,
+      nextScheuledRoot: null, // 下一个计划的Root
     };
   }
 

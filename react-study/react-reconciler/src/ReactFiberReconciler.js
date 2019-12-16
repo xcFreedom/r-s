@@ -95,7 +95,8 @@ function scheduleRootUpdate(current, element, expirationTime, callback) {
  * @returns ExpirationTime
  */
 export function updateContainer(element, container, parentComponent, callback) {
-  const current = container.current; // FiberNode
+  //初次渲染时                    <App />, FiberRoot,
+  const current = container.current; // 从FiberRoot获取RootFiber
   const currentTime = requestCurrentTime(); // 获取当前时间
   const expirationTime = computeExpirationForFiber(currentTime, current); // 计算Fiber有效期
   return updateContainerAtExpirationTime(

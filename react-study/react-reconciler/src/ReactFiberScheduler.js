@@ -12,6 +12,7 @@ import {
 import {
   now,
   noTimeout,
+  cancelPassiveEffects,
 } from './ReactFiberHostConfig';
 import {
   markPendingPriorityLevel,
@@ -59,6 +60,7 @@ let nextEffect                  = null;
 
 let isCommitting                = false;
 let passiveEffectCallbackHandle = null;
+let passiveEffectCallback       = null; // 消极的副作用回调？
 
 // 当前渲染工作的时间
 let nextRenderExpirationTime = NoWork;
@@ -68,8 +70,11 @@ let interruptedBy = null;
 
 function flushPassiveEffects() {
   if (passiveEffectCallbackHandle !== null) {
-    // TODO
     cancelPassiveEffects(passiveEffectCallbackHandle);
+  }
+  if (passiveEffectCallback !== null) {
+    // 调用scheduled的callback，而不是直接调用commitpassiveeffects，确保正常更新
+    passiveEffectCallback();
   }
 }
 
@@ -523,12 +528,12 @@ function findHighestPriorityRoot() {
  * @returns R
  */
 function unbatchedUpdates(fn, a) {
-  if (isBatchingUpdates && !isUnbatchingUpdates) {
-    isUnbatchingUpdates = true;
+  if (isBatchingUpdates && !isUnbatchingUpdates) { // 如果是批量更新，并且非批量更新为false
+    isUnbatchingUpdates = true; // 批量更新设为true
     try {
-      return fn(a);
+      return fn(a); // 执行fn，这里注意try 与finally的关系，先执行fn()，return前将isUnbatchingUpdates设为false
     } finally {
-      isUnbatchingUpdates = false;
+      isUnbatchingUpdates = false; // 非批量更新设为false
     }
   }
   return fn(a);

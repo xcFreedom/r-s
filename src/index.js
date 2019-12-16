@@ -1,24 +1,16 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import Routes from './routes/routes';
 
+import App from './main';
 
 if (process.env.NODE_ENV === 'development') {
   // const HotContainer = require('react-hot-loader').AppContainer;
-  // const App = document.getElementById('app');
   ReactDOM.render(
-    // <HotContainer>
-      <div>111</div>,
-    // </HotContainer>,
+    <App />,
     document.getElementById('app')
   );
 
   // if (module.hot) {
   //   module.hot.accept();
   // }
-} else {
-  ReactDOM.render(
-    <Routes />,
-    document.getElementById('app')
-  )
 }

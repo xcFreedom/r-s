@@ -52,7 +52,7 @@ function legacyRenderSubtreeIntoContainer(
      // ReactDOM.render传入的container是html元素，走这里
      // 预测是将container作为项目的根组件处理
     root = container._reactRootContainer = legacyCreateRootFromDOMContainer(container, forceHydrate);
-    if (typeof callback === 'function') {
+    if (typeof callback === 'function') { // 如果有回调函数，
       const originalCallback = callback;
       callback = function() {
         const instance = getPublicRootInstance(root._internalRoot);
@@ -60,14 +60,14 @@ function legacyRenderSubtreeIntoContainer(
       };
     }
 
-    unbatchedUpdates(() => {
-      if (parentComponent != null) {
+    unbatchedUpdates(() => { // 初次渲染是，这里其实立即执行了，没什么处理
+      if (parentComponent != null) { // 初次渲染时，parentComponent为null
         root.legacy_renderSubtreeInfoContainer(
           parentComponent,
           children,
           callback,
         );
-      } else {
+      } else { // 初次渲染时调用ReactRoot的render方法
         root.render(children, callback);
       }
     });
@@ -164,9 +164,10 @@ ReactWork.prototype.then = function(onCommit) {
 }
 
 ReactWork.prototype._onCommit = function() {
-  if (this._didCommit) {
+  if (this._didCommit) { // 如果已经commit过，return
     return;
   }
+  // _didCommit设为true，执行所有的callback
   this._didCommit = true;
   const callbacks = this._callbacks;
   if (callbacks === null) {
@@ -182,8 +183,9 @@ ReactWork.prototype._onCommit = function() {
 //----------------------------------------------------------------- ReactRoot start ------------------------------------------------
 
 function ReactRoot(container, isConcurrent, hydrate) {
-  const root = createContainer(container, isConcurrent, hydrate); // 创建根结点，也就是创建rootFiber
-  this._internalRoot = root;
+  //初次渲染时       DIVElement
+  const root = createContainer(container, isConcurrent, hydrate); // 创建FiberRoot，FiberRoot不是一个FiberNode对象，FiberRoot的current指向RootFiber，RootFiber的stateNode指向FiberRoot, FiberRoot的containerInfo关联DIVElement（页面容器）
+  this._internalRoot = root; // ReactRoot与FiberRoot关联
 }
 
 /**
@@ -192,13 +194,15 @@ function ReactRoot(container, isConcurrent, hydrate) {
  * @returns {Work}
  */
 ReactRoot.prototype.render = function(children, callback) {
-  const root = this._internalRoot;
-  const work = new ReactWork();
+  const root = this._internalRoot; // 拿到FiberRoot
+  const work = new ReactWork(); // 创建一个work
   callback = callback === undefined ? null : callback;
   if (callback !== null) {
     work.then(callback);
   }
-  updateContainer(children, root, null, work._onCommit);
+
+  // 初次渲染时，    <App />，FiberRoot,
+  updateContainer(children, root, null, work._onCommit); 
   return work;
 }
 

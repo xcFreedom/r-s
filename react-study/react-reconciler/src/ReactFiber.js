@@ -93,7 +93,7 @@ const createFiber = function(tag, pendingProps, key, mode) {
  */
 export function createWorkInProgress(current, pendingProps, expirationTime) {
   let workInProgress = current.alternate;
-  if (workInProgress === nul) {
+  if (workInProgress === null) {
     // 我们使用双缓冲池技术，因为我们知道我们最多只需要一个树的两个版本
     // 我们汇集了我们可以重用的“其他”未使用节点。
     // 这样做是为了避免给从不更新的内容分配额外的对象
