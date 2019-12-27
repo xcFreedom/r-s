@@ -26,10 +26,16 @@ import {
 
 import { ROOT_ATTRIBUTE_NAME } from '../shared/DOMProperty';
 import {
+  LegacyRoot,
+  ConcurrentRoot,
+} from '../../../shared/ReactRootTags';
+import {
   createContainer,
   unbatchedUpdates,
   updateContainer,
+  getPublicRootInstance,
 } from '../../../react-reconciler/inline.dom';
+import { markContainerAsRoot } from './ReactDOMComponentTree';
 
 /**
  * 渲染子树进入容器 
@@ -48,10 +54,12 @@ function legacyRenderSubtreeIntoContainer(
 ) {
   let root = container._reactRootContainer;
   // 页面初次渲染是，container未添加标记，此时container._reactRootContainer为undefined，此时forceHydrate为false
+  let fiberRoot;
   if (!root) {
      // ReactDOM.render传入的container是html元素，走这里
      // 预测是将container作为项目的根组件处理
     root = container._reactRootContainer = legacyCreateRootFromDOMContainer(container, forceHydrate);
+    fiberRoot = root._internalRoot;
     if (typeof callback === 'function') { // 如果有回调函数，
       const originalCallback = callback;
       callback = function() {
@@ -74,7 +82,7 @@ function legacyRenderSubtreeIntoContainer(
 
     
   } else {
-
+    // TODO:待补充
   }
 }
 
@@ -95,9 +103,7 @@ function legacyCreateRootFromDOMContainer(container, forceHydrate) {
     }
   }
 
-  // 默认根节点不是异步的
-  const isConcurrent = false;
-  return new ReactRoot(container, isConcurrent, shouldHydrate);
+  return new ReactSyncRoot(container, LegacyRoot, shouldHydrate ? { hydrate: true } : undefined);
 }
 
 /**
@@ -181,11 +187,27 @@ ReactWork.prototype._onCommit = function() {
 //----------------------------------------------------------------- ReactWork end --------------------------------------------------
 
 //----------------------------------------------------------------- ReactRoot start ------------------------------------------------
+function createRootImpl(container, tag, options) {
+  const hydrate = options != null && options.hydrate === true;
+  const hydratationCallbacks = (options != null && options.hydrationOptions) || null;
+  const root = createContainer(container, tag, hydrate, hydratationCallbacks);
+  markContainerAsRoot(root.current, container);
+  if (hydrate && tag !== LegacyRoot) {
+    const doc = container.nodeType === DOCUMENT_NODE ? container : container.ownerDocument;
+    
+  }
+  return root;
+}
 
-function ReactRoot(container, isConcurrent, hydrate) {
+function ReactSyncRoot(container, tag, options) {
+  this._internalRoot = createRootImpl(container, tag, options);
+}
+
+function ReactRoot(container, options) {
   //初次渲染时       DIVElement
-  const root = createContainer(container, isConcurrent, hydrate); // 创建FiberRoot，FiberRoot不是一个FiberNode对象，FiberRoot的current指向RootFiber，RootFiber的stateNode指向FiberRoot, FiberRoot的containerInfo关联DIVElement（页面容器）
-  this._internalRoot = root; // ReactRoot与FiberRoot关联
+  // 创建FiberRoot，FiberRoot不是一个FiberNode对象
+  // FiberRoot的current指向RootFiber，RootFiber的stateNode指向FiberRoot, FiberRoot的containerInfo关联DIVElement（页面容器）
+  this._internalRoot = createRootImpl(container, ConcurrentRoot, options); // ReactRoot与FiberRoot关联
 }
 
 /**

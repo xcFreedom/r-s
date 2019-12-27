@@ -26,14 +26,14 @@ function getContextForSubtree(parentComponent) {
 }
 
 /**
- * 创建容器
+ * 创建容器，createContainer只是createFiberRoot的包装函数
  * @param {Container} containerInfo 原始container信息
- * @param {boolean} isConcurrent    是否异步
+ * @param {boolean} tag    是否异步
  * @param {boolean} hydrate         是否混合
  * @return OpaqueRoot
  */
-export function createContainer(containerInfo, isConcurrent, hydrate) {
-  return createFiberRoot(containerInfo, isConcurrent, hydrate);
+export function createContainer(containerInfo, tag, hydrate, hydrationCallbacks) {
+  return createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks);
 }
 
 /**
@@ -96,7 +96,7 @@ function scheduleRootUpdate(current, element, expirationTime, callback) {
  */
 export function updateContainer(element, container, parentComponent, callback) {
   //初次渲染时                    <App />, FiberRoot,
-  const current = container.current; // 从FiberRoot获取RootFiber
+  const current = container.current; // 从FiberRoot获取HostRootFiber
   const currentTime = requestCurrentTime(); // 获取当前时间
   const expirationTime = computeExpirationForFiber(currentTime, current); // 计算Fiber有效期
   return updateContainerAtExpirationTime(
@@ -127,3 +127,16 @@ export function getPublicRootInstance(container) {
 export {
   unbatchedUpdates
 };
+
+export function getPublicRootInstance(container) {
+  const containerFiber = container.current;
+  if (!containerFiber.child) {
+    return null;
+  }
+  switch (containerFiber.child.tag) {
+    case HostComponent:
+      return getPublicInstance(containerFiber.child.stateNode);
+    default:
+      return containerFiber.child.stateNode;
+  }
+}

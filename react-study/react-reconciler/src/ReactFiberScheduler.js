@@ -579,7 +579,7 @@ function performWork(minExpirationTime, isYieldy) {
   findHighestPriorityRoot();
 
   if (isYieldy) {
-    // TODO
+    // TODO:
   } else {
     while(
       nextFlushedRoot !== null &&

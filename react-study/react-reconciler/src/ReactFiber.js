@@ -1,6 +1,7 @@
 import {
-  NoContext,
+  NoMode,
   ConcurrentMode,
+  BatchedMode,
   StrictMode,
   ProfileMode,
 } from './ReactTypeOfMode';
@@ -15,6 +16,8 @@ import { NoWork } from './ReactFiberEx'
 // import { isDevToolsPresent } from './ReactFiberDevToolsHook';
 import { createFiberRoot } from './ReactFiberRoot';
 import { enableProfilerTimer } from 'react-study/shared/ReactFeatureFlags';
+import { ConcurrentRoot, BatchedRoot } from 'react-study/shared/ReactRootTags';
+import { isDevToolsPersent } from './ReactFiberDevToolsHook';
 
 /**
  * 
@@ -73,7 +76,7 @@ function FiberNode(tag, pendingProps, key, mode) {
 }
 
 /**
- * 创建Fiber
+ * 创建Fiber，FiberNode的工厂函数
  * @param {WorkTag} tag  标记
  * @param {mixed} pendingProps 等待props
  * @param {null | string} key  组件的key
@@ -131,13 +134,22 @@ export function createWorkInProgress(current, pendingProps, expirationTime) {
 
 /**
  * 创建主根fiber
- * @param {boolean} isConcurrent 
+ * @param {boolean} tag 
  */
-export function createHostRootFiber(isConcurrent) {
-  let mode = isConcurrent ? (ConcurrentMode | StrictMode) : NoContext;
+export function createHostRootFiber(tag) {
+  let mode;
 
-  if (enableProfilerTimer && isDevToolsPresent) {
+  if (tag === ConcurrentRoot) {
+    mode = ConcurrentMode | BatchedMode | StrictMode;
+  } else if (tag === BatchedRoot) {
+    mode = BatchedMode | StrictMode;
+  } else {
+    mode = NoMode;
+  }
+
+  if (enableProfilerTimer && isDevToolsPersent) {
     mode |= ProfileMode;
   }
+
   return createFiber(HostRoot, null, null, mode);
 }

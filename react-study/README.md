@@ -11,3 +11,12 @@
 11. ```updateContainerAtExpirationTime```调用```getContextForSubtree```计算```context```，更新```FiberRoot```的```context```，然后调用```scheduleRootUpdate```。
 12. ```scheduleRootUpdate```开始调度更新，首先根据```updateContainer```计算的```ExpirationTime```，调用```createUpdate```，创建一个```Update```。然后调用```enqueueUpdate```把```host root Fiber```和```Update```传入。
 13. ```enqueueUpdate```根据```Fiber```的```alternate```和```updateQueue```创建两个更新队列
+14. 
+
+
+
+
+
+
+hydrate：注水，ssr时服务器输出字符串，而浏览器需要根据字符串完成react的初始化工作，这个过程就是hydrate。
+hydrate 描述的是 ReactDOM 复用 ReactDOMServer 服务端渲染的内容时尽可能保留结构，并补充事件绑定等 Client 特有内容的过程。
