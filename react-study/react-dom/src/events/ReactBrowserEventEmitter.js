@@ -1,6 +1,8 @@
 import {
-  TOP_SCROLL,
+  TOP_SCROLL, TOP_FOCUS, TOP_BLUR, TOP_CANCEL, TOP_CLOSE, getRawEventName, TOP_INVALID, TOP_SUBMIT, TOP_RESET, mediaEventTypes,
 } from "./DOMTopLevelEventTypes";
+import { trapCapturedEvent, trapBubbledEvent } from "./ReactDOMEventListener";
+import isEventSupported from './isEventSupported';
 
 /**
  *  - 顶层事件委托用于捕获大多数原生的浏览器事件。这可能只会发生在主线程中，由ReactDOMEventListener负责，事件是被注入的形式，所以支持扩展。这是在主线程中发生的唯一工作。
@@ -65,7 +67,35 @@ export function listenToTopLevel(topLevelType, mountAt, listeningSet) {
   if (!listeningSet.has(topLevelType)) {
     switch (topLevelType) {
       case TOP_SCROLL:
-        trapCapturedEvent
+        trapCapturedEvent(TOP_SCROLL, mountAt);
+        break;
+      case TOP_FOCUS:
+      case TOP_BLUR:
+        trapCapturedEvent(TOP_FOCUS, mountAt);
+        trapCapturedEvent(TOP_BLUR, mountAt);
+        // 稍后我们将在这个函数中为单个依赖项设置标志，但这将确保我们将两者都标记为已附加，而不仅仅是一个。
+        listeningSet.add(TOP_BLUR);
+        listeningSet.add(TOP_FOCUS);
+        break;
+      case TOP_CANCEL:
+      case TOP_CLOSE:
+        if (isEventSupported(getRawEventName(topLevelType))) {
+          trapCapturedEvent(topLevelType, mountAt);
+        }
+        break;
+      case TOP_INVALID:
+      case TOP_SUBMIT:
+      case TOP_RESET:
+        // 这些事件不希望它们二次触发
+        break;
+      default:
+        // 默认情况下，在顶层监听所有非媒体事件。媒体事件不会冒泡，因此添加监听器不会做任何事情
+        const isMediaEvent = mediaEventTypes.indexOf(topLevelType) !== -1;
+        if (!isMediaEvent) {
+          trapBubbledEvent(topLevelType, mountAt);
+        }
+        break;
     }
+    listeningSet.add(topLevelType);
   }
 }

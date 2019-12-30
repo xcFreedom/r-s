@@ -20,3 +20,5 @@
 
 hydrate：注水，ssr时服务器输出字符串，而浏览器需要根据字符串完成react的初始化工作，这个过程就是hydrate。
 hydrate 描述的是 ReactDOM 复用 ReactDOMServer 服务端渲染的内容时尽可能保留结构，并补充事件绑定等 Client 特有内容的过程。
+
+dehydrate：脱水，一般指的是服务器端渲染时，准备纯数据的过程，这些数据随HTML一起发送给浏览器。

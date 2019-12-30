@@ -36,6 +36,13 @@ import {
   getPublicRootInstance,
 } from '../../../react-reconciler/inline.dom';
 import { markContainerAsRoot } from './ReactDOMComponentTree';
+import {
+  setAttemptSynchronousHydration,
+  setAttemptUserBlockingHydration,
+  setAttemptContinuousHydration,
+  setAttemptHydrationAtCurrentPriority,
+  eagerlyTrapReplayableEvents,
+} from '../events/ReactDOMEventReplaying';
 
 /**
  * 渲染子树进入容器 
@@ -188,13 +195,14 @@ ReactWork.prototype._onCommit = function() {
 
 //----------------------------------------------------------------- ReactRoot start ------------------------------------------------
 function createRootImpl(container, tag, options) {
+  // 标记为LegacyRoot或Concurrent Root
   const hydrate = options != null && options.hydrate === true;
   const hydratationCallbacks = (options != null && options.hydrationOptions) || null;
   const root = createContainer(container, tag, hydrate, hydratationCallbacks);
   markContainerAsRoot(root.current, container);
   if (hydrate && tag !== LegacyRoot) {
     const doc = container.nodeType === DOCUMENT_NODE ? container : container.ownerDocument;
-    
+    eagerlyTrapReplayableEvents(doc);
   }
   return root;
 }

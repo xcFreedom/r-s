@@ -60,3 +60,10 @@ export function createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks)
 
   return root;
 }
+
+export function markRootExpiredAtTime(root, expirationTime) {
+  const lastExpiredTime = root.lastExpiredTime;
+  if (lastExpiredTime === NoWork || lastExpiredTime > expirationTime) {
+    root.lastExpiredTime = expirationTime;
+  }
+}

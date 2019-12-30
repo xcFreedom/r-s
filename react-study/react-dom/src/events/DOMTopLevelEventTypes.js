@@ -1,5 +1,6 @@
 import {
-  unsafeCastStringToDOMTopLevelType
+  unsafeCastStringToDOMTopLevelType,
+  unsafeCastDOMTopLevelTypeToString,
 } from '../../../legacy-events/TopLevelEventTypes';
 import getVendorPrefixedEventName from './getVendorPrefixedEventName';
 
@@ -163,3 +164,7 @@ export const mediaEventTypes = [
   TOP_VOLUME_CHANGE,
   TOP_WAITING,
 ];
+
+export function getRawEventName(topLevelType) {
+  return unsafeCastDOMTopLevelTypeToString(topLevelType);
+}
