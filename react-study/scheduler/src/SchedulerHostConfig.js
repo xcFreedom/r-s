@@ -8,7 +8,7 @@
 import {
   enableIsInputPending,
   enableMessageLoopImplementation,
-} from '../SchedulerFeatureFlags';
+} from './SchedulerFeatureFlags';
 
 // The DOM Scheduler implementation is similar to requestIdleCallback. It
 // works by scheduling a requestAnimationFrame, storing the time for the start
@@ -124,11 +124,13 @@ if (
     ? // We won't attempt to align with the vsync. Instead we'll yield multiple
       // times per frame, often enough to keep it responsive even at really
       // high frame rates > 120.
+      // 我们不会试图与vsync保持一致。相反，我们将每帧产生多次，通常足以使它在真正高的帧速率>120时保持响应。
       5
     : // Use a heuristic to measure the frame rate and yield at the end of the
       // frame. We start out assuming that we run at 30fps but then the
       // heuristic tracking will adjust this value to a faster fps if we get
       // more frequent animation frames.
+      // 使用启发式方法测量帧速率和帧末尾的屈服点。我们开始假设我们以每秒30帧的速度运行，但是如果我们得到更频繁的动画帧，启发式跟踪会将该值调整为更快的每秒速度。
       33.33;
 
   let prevRAFTime = -1;
@@ -286,6 +288,13 @@ if (
     // waited until the end of the frame to post the callback, we risk the
     // browser skipping a frame and not firing the callback until the frame
     // after that.
+    /**
+     * - 急切地安排下一个动画回调在帧的开始。
+     * - 如果调度程序队列在帧末尾不是空的，它将在该回调中继续刷新。
+     * - 如果队列*是空的，那么它将立即退出。
+     * - 在框架开始处发布回调可以确保在最早的框架内触发回调。
+     * - 如果我们等到帧结束后才发布回调，则浏览器有可能跳过某个帧，直到之后的帧才触发回调。
+     */
     isRAFLoopRunning = true;
     requestAnimationFrame(nextRAFTime => {
       clearTimeout(rAFTimeoutID);
@@ -294,7 +303,11 @@ if (
 
     // requestAnimationFrame is throttled when the tab is backgrounded. We
     // don't want to stop working entirely. So we'll fallback to a timeout loop.
+    /**
+     * - 当选项卡处于后台时，将限制requestAnimationFrame。我们不想完全停止工作。所以我们将返回到超时循环。
+     */
     // TODO: Need a better heuristic for backgrounded work.
+    // 后台工作时需要一个更好的方式
     const onTimeout = () => {
       frameDeadline = getCurrentTime() + frameLength / 2;
       performWorkUntilDeadline();

@@ -1,15 +1,15 @@
-export function push(heap, node) {
+function push(heap, node) {
   const index = heap.length;
   heap.push(node);
   siftUp(heap, node, index);
 }
 
-export function peek(heap) {
+function peek(heap) {
   const first = heap[0];
   return first === undefined ? null : first;
 }
 
-export function pop(heap) {
+function pop(heap) {
   const first = heap[0];
   if (first !== undefined) {
     const last = heap.pop();
@@ -27,6 +27,7 @@ function siftUp(heap, node, i) {
   let index = i;
   while (true) {
     const parentIndex = Math.floor((index - 1) / 2);
+    console.log(parentIndex);
     const parent = heap[parentIndex];
     if (parent !== undefined && compare(parent, node) > 0) {
       // parent更大，调换顺序
@@ -72,3 +73,22 @@ function compare(a, b) {
   const diff = a.sortIndex - b.sortIndex;
   return diff !== 0 ? diff : a.id - b.id;
 }
+
+
+let sortIndex = 1;
+var heap = [];
+
+for (let i = 0; i < 10; i++) {
+  push(heap, {
+    sortIndex: sortIndex++,
+    id: Math.random(),
+    push: '1'
+  });
+}
+console.log(heap);
+let t = heap[4];
+heap[4] = heap[1];
+heap[1] = t;
+console.log(heap);
+pop(heap);
+console.log(heap);

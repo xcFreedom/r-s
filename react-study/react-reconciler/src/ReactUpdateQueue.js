@@ -86,9 +86,10 @@ export function createUpdateQueue(baseState) {
  * @param {ExpirationTime} expirationTime 
  * @returns {Update}
  */
-export function createUpdate(expirationTime) {
+export function createUpdate(expirationTime, suspenseConfig) {
   return {
     expirationTime,
+    suspenseConfig,
 
     tag: UpdateState,
     payload: null,

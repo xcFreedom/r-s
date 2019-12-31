@@ -61,6 +61,54 @@ export function createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks)
   return root;
 }
 
+/**
+ * 标记root延迟的时间
+ * @param {FiberRoot} root 
+ * @param {ExpirationTime} expirationTime 
+ */
+export function markRootSuspendedAtTime(root, expirationTime) {
+  const firstSuspendedTime = root.firstSuspendedTime;
+  const lastSuspendedTime = root.lastSuspendedTime;
+  if (firstSuspendedTime < expirationTime) {
+    root.firstSuspendedTime = expirationTime;
+  }
+  if (lastSuspendedTime > expirationTime || firstSuspendedTime === NoWork) {
+    root.lastSuspendedTime = expirationTime;
+  }
+
+  if (expirationTime <= root.lastPingedTime) {
+    root.lastPingedTime = NoWork;
+  }
+}
+
+/**
+ * 标记root已更新的时间
+ * @param {FiberRoot} root 
+ * @param {ExpirationTime} expirationTime 
+ */
+export function markRootUpdatedAtTime(root, expirationTime) {
+  // 更新等待时间范围
+  const firstPendingTime = root.firstPendingTime;
+  if (expirationTime > firstPendingTime) {
+    root.firstPendingTime = expirationTime;
+  }
+
+  // 更新挂起时间的范围。将优先级较低或等于此更新的所有内容都视为未挂起。
+  const firstSuspendedTime = root.firstSuspendedTime;
+  if (firstSuspendedTime !== NoWork) {
+    if (expirationTime >= firstSuspendedTime) {
+      root.firstSuspendedTime = root.lastSuspendedTime = root.nextKnownPendingLevel = NoWork;
+    } else if (expirationTime >= root.lastSuspendedTime) {
+      root.lastSuspendedTime = expirationTime + 1;
+    }
+
+    // 这是挂起的级别。检查它的优先级是否高于下一个已知的挂起级别。
+    if (expirationTime > root.nextKnownPendingLevel) {
+      root.nextKnownPendingLevel = expirationTime;
+    }
+  }
+}
+
 export function markRootExpiredAtTime(root, expirationTime) {
   const lastExpiredTime = root.lastExpiredTime;
   if (lastExpiredTime === NoWork || lastExpiredTime > expirationTime) {
