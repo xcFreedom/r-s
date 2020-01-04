@@ -1,7 +1,7 @@
 import * as Scheduler from '../../scheduler';
 
 const {
-  unstable_scheduleCallback: Scheduler_schedulerCallback,
+  unstable_scheduleCallback: Scheduler_scheduleCallback,
   unstable_now: Scheduler_now,
   unstable_ImmediatePriority: Scheduler_ImmediatePriority,
   unstable_UserBlockingPriority: Scheduler_UserBlockingPriority,
@@ -71,6 +71,11 @@ export function runWithPriority(reactPriorityLevel, fn) {
   return Scheduler_runWithPriority(priorityLevel, fn);
 }
 
+export function scheduleCallback(reactPriorityLevel, callback, options) {
+  const priorityLevel = reactPriorityToSchedulerPriority(reactPriorityLevel);
+  return Scheduler_scheduleCallback(priorityLevel, callback, options);
+}
+
 /**
  * type SchedulerCallback = (isSync: boolean) => SchedulerCallback | null
  * 
@@ -83,7 +88,7 @@ export function scheduleSyncCallback(callback) {
   if (syncQueue = null) {
     syncQueue = [callback];
     // 最早在next tick刷新
-    immediateQueueCallbackNode = Scheduler_schedulerCallback(Scheduler_ImmediatePriority, flushSyncCallbackQueueImpl);
+    immediateQueueCallbackNode = Scheduler_scheduleCallback(Scheduler_ImmediatePriority, flushSyncCallbackQueueImpl);
   } else {
     // 推到现有队列。不需要安排回调，因为我们在创建队列时已经安排了回调。
     syncQueue.push(callback);
@@ -122,7 +127,7 @@ function flushSyncCallbackQueueImpl() {
         syncQueue = syncQueue.slice(i + 1);
       }
       // next tick重启
-      Scheduler_schedulerCallback(Scheduler_ImmediatePriority, flushSyncCallbackQueue);
+      Scheduler_scheduleCallback(Scheduler_ImmediatePriority, flushSyncCallbackQueue);
       throw error;
     } finally {
       isFlushingSyncQueue = false;

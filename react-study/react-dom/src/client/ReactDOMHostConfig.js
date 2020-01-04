@@ -4,12 +4,24 @@ export {
   unstable_now as now,
   unstable_cancelCallback as cancelDeferredCallback,
 } from '../../../scheduler';
+import {
+  isEnabled as ReactBrowserEventEmitterIsEnabled,
+  setEnabled as ReactBrowserEventEmitterSetEnabled,
+} from '../events/ReactBrowserEventEmitter';
+import { getSelectionInformation } from './ReactInputSelection';
+import setTextContent from './setTextContent';
+import { trapClickOnNonInteractiveElement } from './ReactDOMComponent';
 
 
 const SUSPENSE_START_DATA = '$';
 const SUSPENSE_END_DATA = '/$';
 const SUSPENSE_PENDING_START_DATA = '$?';
 const SUSPENSE_FALLBACK_START_DATA = '$!';
+
+const STYLE = 'style';
+
+let eventsEnabled = null;
+let selectionInformation = null;
 
 
 export const noTimeout = -1;
@@ -18,8 +30,86 @@ export function getPublicInstance(instance) {
   return instance;
 }
 
-export const cancelPassiveEffects = cancelDeferredCallback;
+/**
+ * Commit前的准备工作
+ * @param {*} containerInfo 
+ */
+export function prepareForCommit(containerInfo) {
+  eventsEnabled = ReactBrowserEventEmitterIsEnabled();
+  selectionInformation = getSelectionInformation();
+  ReactBrowserEventEmitterSetEnabled(false);
+}
 
+export function resetAfterCommit(containerInfo) {
+  restoreSelection(selectionInformation);
+  selectionInformation = null;
+  ReactBrowserEventEmitterSetEnabled(eventsEnabled);
+  eventsEnabled = null;
+}
+
+// -------------------
+//     Mutation
+// -------------------
+
+export const supportsMutation = true;
+
+/**
+ * 
+ * @param {Element} domElement 
+ */
+export function resetTextContent(domElement) {
+  setTextContent(domElement, '');
+}
+
+export function appendChild(parentInstance, child) {
+  parentInstance.appendChild(child);
+}
+
+
+export function appendChildToContainer(container, child) {
+  let parentNode;
+  if (container.nodeType === COMMENT_NODE) {
+    parentNode = container.parentNode;
+    parentNode.insertBefore(child, container);
+  } else {
+    parentNode = container;
+    parentNode.appendChild(child);
+  }
+
+  // 这段代码是为了Portal处理
+  const reactRootContainer = container._reactRootContainer;
+  if (
+    (reactRootContainer === null || reactRootContainer === undefined) &&
+    parentNode.onclick === null
+  ) {
+    // 对于SVG、MathML或自定义元素，此转换可能不正确。
+    trapClickOnNonInteractiveElement(parentNode);
+  }
+}
+
+/**
+ * 
+ * @param {Element} parentInstance 
+ * @param {Element} child 
+ * @param {Element} beforeChild 
+ */
+export function insertBefore(parentInstance, child, beforeChild) {
+  parentInstance.insertBefore(child, beforeChild);
+}
+
+/**
+ * 插入节点
+ * @param {Element} container 
+ * @param {Element} child 
+ * @param {Element} beforeChild 
+ */
+export function insertInContainerBefore(container, child, beforeChild) {
+  if (container.nodeType === COMMENT_NODE) {
+    container.parentNode.insertBefore(child, beforeChild);
+  } else {
+    container.insertBefore(child, beforeChild);
+  }
+}
 
 /**
  * - 如果此节点是SuspenseInstance的直接子节点，则返回SuspenseInstance  即 （如果其先前的兄弟是带有SUSPENSE_x_START_DATA的注释）

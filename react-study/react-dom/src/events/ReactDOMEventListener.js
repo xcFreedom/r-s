@@ -65,7 +65,19 @@ function releaseTopLevelCallbackBookKeeping(instance) {
   }
 }
 
+function handleTopLevel(bookKeeping) {
+  // TODO: 待补充
+}
+
 export let _enabled = true;
+
+export function setEnabled(enabled) {
+  _enabled = !!enabled;
+}
+
+export function isEnabled() {
+  return _enabled;
+}
 
 export function trapBubbledEvent(topLevelType, element) {
   trapEventForPluginEventSystem(element, topLevelType, false);

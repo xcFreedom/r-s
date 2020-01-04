@@ -41,9 +41,32 @@ const formatMarkName = (markName) => {
   return `${reactEmoji} ${markName}`;
 };
 
+const formatLabel = (label, warning) => {
+  const prefix = warning ? `${warningEmoji} ` : `${reactEmoji} `;
+  const suffix = warning ? ` Warning: ${warning}` : '';
+  return `${prefix}${label}${suffix}`;
+};
+
 const beginMark = (markName) => {
   performance.mark(formatMarkName(markName));
 };
+
+const clearMark = (markName) => {
+  performance.clearMarks(formatMarkName(markName));
+};
+
+const endMark = (label, markName, warning) => {
+  const formattedMarkName = formatMarkName(markName);
+  const formattedLabel = formatLabel(label, warning); 
+  try {
+    performance.measure(formattedLabel, formattedMarkName);
+  } catch (err) {
+
+  }
+
+  performance.clearMarks(formattedMarkName);
+  performance.clearMeasures(formattedLabel);
+}
 
 const getFiberMarkName = (label, debugID) => {
   return `${label} (#${debugID})`;
@@ -76,6 +99,24 @@ const beginFiberMark = (fiber, phase) => {
   return true;
 };
 
+const clearFiberMark = (fiber, phase) => {
+  const componentName = getComponentName(fiber.type) || 'Unknown';
+  const debugID = fiber._debugID;
+  const isMounted = fiber.alternate !== null;
+  const label = getFiberLabel(componentName, isMounted, phase);
+  const markName = getFiberMarkName(label, debugID);
+  clearMark(markName);
+};
+
+const endFiberMark = (fiber, phase, warning) => {
+  const componentName = getComponentName(fiber.type) || 'Unknown';
+  const debugID = fiber._debugID;
+  const isMounted = fiber.alternate;
+  const label = getFiberLabel(componentName, isMounted, phase);
+  const markName = getFiberMarkName(label, debugID);
+  endMark(label, markName, warning);
+};
+
 /**
  * 
  * @param {Fiber} fiber 
@@ -98,6 +139,15 @@ const shouldIgnoreFiber = (fiber) => {
   }
 }
 
+const clearPendingPhaseMeasurement = () => {
+  if (currentPhase !== null && currentPhaseFiber !== null) {
+    clearFiberMark(currentPhaseFiber, currentPhase);
+  }
+  currentPhaseFiber = null;
+  currentPhase = null;
+  hasScheduledUpdateInCurrentPhase = false;
+}
+
 const resumeTimersRecursively = (fiber) => {
   if (fiber.return !== null) {
     resumeTimersRecursively(fiber.return);
@@ -113,6 +163,12 @@ const resumeTimers = () => {
     resumeTimersRecursively(currentFiber);
   }
 };
+
+export function recordEffect() {
+  if (enableUserTimingAPI) {
+    effectCountInCurrentCommit++;
+  }
+}
 
 export function recordScheduleUpdate() {
   if (enableUserTimingAPI) {
@@ -137,6 +193,36 @@ export function startWorkTimer(fiber) {
   }
 }
 
+export function startPhaseTimer(fiber, phase) {
+  if (enableUserTimingAPI) {
+    if (!supportsUserTiming) {
+      return;
+    }
+    clearPendingPhaseMeasurement();
+    if (!beginFiberMark(fiber, phase)) {
+      return;
+    }
+    currentPhaseFiber = fiber;
+    currentPhase = phase;
+  }
+}
+
+export function stopPhaseTimer() {
+  if (enableUserTimingAPI) {
+    if (!supportsUserTiming) {
+      return;
+    }
+    if (currentPhase !== null && currentPhaseFiber !== null) {
+      const warning = hasScheduledUpdateInCurrentPhase
+        ? 'Scheduled a cascading update'
+        : null;
+      endFiberMark(currentPhaseFiber, currentPhase, warning);
+    }
+    currentPhase = null;
+    currentPhaseFiber = null;
+  }
+}
+
 /**
  * 
  * @param {Fiber | null} nextUnitOfWork 
@@ -153,5 +239,89 @@ export function startWorkLoopTimer(nextUnitOfWork) {
     beginMark('(React Tree Reconciliation)');
     // 恢复在最后一个循环中进行的所有度量
     resumeTimers();
+  }
+}
+
+export function startCommitTimer() {
+  if (enableUserTimingAPI) {
+    if (!supportsUserTiming) {
+      return;
+    }
+    isCommiting = true;
+    hasScheduledUpdateInCurrentCommit = false;
+    labelsInCurrentCommit.clear();
+    beginMark('(Committing Changes)');
+  }
+}
+
+export function stopCommitTimer() {
+  if (enableUserTimingAPI) {
+    if (!supportsUserTiming) {
+      return;
+    }
+
+    let warning = null;
+    if (hasScheduledUpdateInCurrentCommit) {
+      warning = 'Lifecycle hook scheduled a cascading update';
+    } else if (commitCountInCurrentWorkLoop > 0) {
+      warning = 'Caused by a cascading update in earlier commit';
+    }
+
+    hasScheduledUpdateInCurrentCommit = false;
+    commitCountInCurrentWorkLoop++;
+    isCommitting = false;
+    labelsInCurrentCommit.clear();
+
+    endMark('(Committing Changes)', '(Committing Changes)', warning);
+  }
+}
+
+export function startCommitSnapshotEffectsTimer() {
+  if (enableUserTimingAPI) {
+    if (!supportsUserTiming) {
+      return;
+    }
+    effectCountInCurrentCommit = 0;
+    beginMark('(Committing Snapshot Effects)');
+  }
+}
+
+export function stopCommitSnapshotEffectsTimer() {
+  if (enableUserTimingAPI) {
+    if (!supportsUserTiming) {
+      return;
+    }
+    const count = effectCountInCurrentCommit;
+    effectCountInCurrentCommit = 0;
+    endMark(
+      `(Committing Snapshot Effects: ${count} Total)`,
+      '(Committing Snapshot Effects)',
+      null,
+    );
+  }
+}
+
+export function startCommitHostEffectsTimer() {
+  if (enableUserTimingAPI) {
+    if (!supportsUserTiming) {
+      return;
+    }
+    effectCountInCurrentCommit = 0;
+    beginMark('(Committing Host Effects)')
+  }
+}
+
+export function stopCommitHostEffectsTimer() {
+  if (enableUserTimingAPI) {
+    if (!supportsUserTiming) {
+      return;
+    }
+    const count = effectCountInCurrentCommit;
+    effectCountInCurrentCommit = 0;
+    endMark(
+      `(Committing Host Effects: ${count} Total)`,
+      '(Committing Host Effects)',
+      null,
+    );
   }
 }

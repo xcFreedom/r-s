@@ -28,39 +28,39 @@ import { isDevToolsPersent } from './ReactFiberDevToolsHook';
  */
 function FiberNode(tag, pendingProps, key, mode) {
   // Instance
-  this.tag         = tag;
+  this.tag         = tag; // 标记不同的组件类型
   this.key         = key;
-  this.elementType = null;
-  this.type        = null;
-  this.stateNode   = null;
+  this.elementType = null; // 表示fiber的对应元素的类型，比如'div'，Class
+  this.type        = null; // 表示fiber的真实类型，大部分情况下与elementType一样？
+  this.stateNode   = null; // fiber对应的实例
 
   // Fiber
-  this.return  = null;
-  this.child   = null;
-  this.sibling = null;
-  this.index   = 0;
+  this.return  = null; // fiber的父级fiber
+  this.child   = null; // fiber的第一个子child fiber
+  this.sibling = null; // fiber的右兄弟节点
+  this.index   = 0; // 如果由数组渲染出列表，index对应的就是fiber的位置，index与key一起才能做数组的diff
 
   this.ref = null;
 
-  this.pendingProps = pendingProps;
-  this.memoizedProps = null;
-  this.updateQueue = null;
-  this.memoizedState = null;
-  this.contextDependencies = null;
+  this.pendingProps = pendingProps; // 新的props
+  this.memoizedProps = null; // 当前的props
+  this.updateQueue = null; // fiber上的更新队列
+  this.memoizedState = null; // 当前的state
+  this.dependencies = null; // fiber的context、events
 
-  this.mode = mode;
+  this.mode = mode; // ./ReactTypeOfMode
 
   // Effects(影响)
-  this.effectTag = NoEffect;
-  this.nextEffect = null;
+  this.effectTag = NoEffect; // 表示当前fiber要更新的方式 shared/ReactSideEffectTag.js
+  this.nextEffect = null; // 指向下一个有更新的fiber
 
-  this.firstEffect = null;
-  this.lastEffect = null;
+  this.firstEffect = null; // 子节点中所有有更新的节点中的第一个fiber
+  this.lastEffect = null; // 子节点中所有有更新的节点中的最后一个fiber
 
-  this.expirationTime = NoWork;
-  this.childExpirationTime = NoWork;
+  this.expirationTime = NoWork; // 过期时间(优先级)
+  this.childExpirationTime = NoWork; // 当前节点的所有子节点的那个最大的优先级
 
-  this.alternate = null;
+  this.alternate = null; // 双缓冲
 
   if (enableProfilerTimer) {
     this.actualDuration = Number.NaN;

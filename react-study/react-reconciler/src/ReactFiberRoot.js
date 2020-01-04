@@ -109,6 +109,36 @@ export function markRootUpdatedAtTime(root, expirationTime) {
   }
 }
 
+
+/**
+ * 标记root完成时间
+ * @param {FiberRoot} root 
+ * @param {ExpirationTime} finishedExpirationTime 
+ * @param {ExpirationTIme} remainingExpirationTime 
+ */
+export function markRootFinishedAtTime(root, finishedExpirationTime, remainingExpirationTime) {
+  // 更新pending times范围
+  root.firstPendingTime = remainingExpirationTime;
+
+  // 更新挂起时间的范围。将优先级更高或等于此更新的所有内容都视为未挂起。
+  if (finishedExpirationTime <= root.lastSuspendedTime) {
+    // 整个暂停范围现在没有暂停。
+    root.firstSuspendedTime = root.lastSuspendedTime = root.nextKnownPendingLevel = NoWork;
+  } else if (finishedExpirationTime <= root.firstSuspendedTime) {
+    // 部分暂停范围现在未暂停。缩小范围以包含从非挂起时间（非包含）到上次挂起时间之间的所有内容。
+    root.firstSuspendedTime = finishedExpirationTime - 1;
+  }
+
+  if (finishedExpirationTime <= root.lastPingedTime) {
+    root.lastPingedTime = NoWork;
+  }
+
+  if (finishedExpirationTime <= root.lastExpiredTime) {
+    root.lastExpiredTime = NoWork;
+  }
+
+}
+
 export function markRootExpiredAtTime(root, expirationTime) {
   const lastExpiredTime = root.lastExpiredTime;
   if (lastExpiredTime === NoWork || lastExpiredTime > expirationTime) {

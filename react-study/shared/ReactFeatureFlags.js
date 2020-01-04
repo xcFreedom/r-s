@@ -11,4 +11,8 @@ export const enableSelectiveHydration = false; // __EXPERIMENTAL__;
 
 export const enableSuspenseCallback = false;
 
+// 实验性React Flare事件系统和事件组件支持。
 export const enableFlareAPI = false;
+
+// Experimental Host Component support.
+export const enableFundamentalAPI = false;

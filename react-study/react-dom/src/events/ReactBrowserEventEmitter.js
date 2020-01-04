@@ -1,7 +1,12 @@
 import {
   TOP_SCROLL, TOP_FOCUS, TOP_BLUR, TOP_CANCEL, TOP_CLOSE, getRawEventName, TOP_INVALID, TOP_SUBMIT, TOP_RESET, mediaEventTypes,
 } from "./DOMTopLevelEventTypes";
-import { trapCapturedEvent, trapBubbledEvent } from "./ReactDOMEventListener";
+import {
+  isEnabled,
+  setEnabled,
+  trapCapturedEvent,
+  trapBubbledEvent,
+} from "./ReactDOMEventListener";
 import isEventSupported from './isEventSupported';
 
 /**
@@ -99,3 +104,10 @@ export function listenToTopLevel(topLevelType, mountAt, listeningSet) {
     listeningSet.add(topLevelType);
   }
 }
+
+export {
+  setEnabled,
+  isEnabled,
+  trapBubbledEvent,
+  trapCapturedEvent
+};

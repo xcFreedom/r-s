@@ -1,6 +1,7 @@
 import ReactCurrentDispatcher from './ReactCurrentDispatcher';
 import ReactCurrentOwner from './ReactCurrentOwner';
 
+// TODO:
 const ReactSharedInternals = {
   ReactCurrentDispatcher,
   ReactCurrentOwner,

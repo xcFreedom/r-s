@@ -164,7 +164,7 @@ function trapReplayableEvent(topLevelType, document, listeningSet) {
     // Trap events for the responder system 响应程序系统的陷阱事件。
     const passiveEventKey = unsafeCastDOMTopLevelTypeToString(topLevelType) + '_passive';
     if (!listeningSet.has(passiveEventKey)) {
-      trapEventForResponderEventSystem(document, topLevelType, true);s
+      trapEventForResponderEventSystem(document, topLevelType, true);
       listeningSet.add(passiveEventKey);
     }
 
