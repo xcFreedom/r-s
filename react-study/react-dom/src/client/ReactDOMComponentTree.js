@@ -6,6 +6,7 @@ import {
 const randomKey = Math.random().toString(36).slice(2);
 
 const internalInstanceKey = '__reactInternalInstance$' + randomKey;
+const internalEventHandlersKey = '__reactEventHandlers$' + randomKey;
 const internalContainerInstanceKey = '__reactContainere$' + randomKey;
 
 export function markContainerAsRoot(hostRoot, node) {
@@ -106,4 +107,11 @@ export function getInstanceFromNode(node) {
     }
   }
   return null;
+}
+
+export function getFiberCurrentPropsFromNode(node) {
+  return node[internalEventHandlersKey] || null;
+}
+export function updateFiberProps(node, props) {
+  node[internalEventHandlersKey] = props;
 }

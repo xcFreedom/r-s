@@ -4,7 +4,7 @@ import {
   markRootUpdatedAtTime,
   markRootFinishedAtTime,
 } from "./ReactFiberRoot";
-import { NoWork, Sync } from "./ReactFiberExpirationTime";
+import { NoWork, Sync, msToExpirationTime, computeSuspenseExpiration, LOW_PRIORITY_EXPIRATION, computeInteractiveExpiration, Idle } from "./ReactFiberExpirationTime";
 import { ImmediatePriority, NormalPriority } from "../../scheduler/src/SchedulerPriorities";
 import {
   scheduleSyncCallback,
@@ -13,8 +13,12 @@ import {
   NoPriority,
   scheduleCallback,
   flushSyncCallbackQueue,
+  now,
+  UserBlockingPriority,
+  LowPriority,
+  IdlePriotity,
 } from "./SchedulerWithReactIntegration";
-import { enableSchedulerTracing, enableProfilerTimer } from "react-study/shared/ReactFeatureFlags";
+import { enableSchedulerTracing, enableProfilerTimer, enableSuspenseServerRenderer } from "react-study/shared/ReactFeatureFlags";
 import { __interactionsRef, __subscriberRef } from "react-study/scheduler/tracing";
 import {
   commitPassiveHookEffects,
@@ -22,8 +26,9 @@ import {
   commitResetTextContent,
   commitDetachRef,
   commitPlacement,
+  commitWork,
 } from "./ReactFiberCommitWork";
-import { HostRoot, ClassComponent } from "react-study/shared/ReactWorkTags";
+import { HostRoot, ClassComponent, SuspenseComponent, SuspenseListComponent } from "react-study/shared/ReactWorkTags";
 import { createCapturedValue } from "./ReactCapturedValue";
 import { createRootErrorUpdate, createClassErrorUpdate } from "./ReactFiberThrow";
 import { enqueueUpdate } from "./ReactUpdateQueue";
@@ -45,6 +50,11 @@ import {
   resetCurrentFiber as resetCurrentDebugFiberInDEV,
 } from './ReactCurrentFiber';
 import { recordCommitTime } from "./ReactProfilerTimer";
+import {
+  BatchedMode,
+  NoMode,
+  ConcurrentMode,
+} from "./ReactTypeOfMode";
 
 
 const NoContext = /*                    */ 0b000000;
@@ -102,6 +112,83 @@ let pendingPassiveEffectsRenderPriority = NoPriority;
 let pendingPassiveEffectsExpirationTime = NoWork;
 
 
+// 过期时间是通过添加到当前时间（开始时间）来计算的。
+// 但是，如果两个更新被安排在同一事件中，我们应该将它们的开始时间视为同时的，
+// 即使实际时钟时间在第一次和第二次调用之间提前。
+
+// 换句话说，由于过期时间决定了更新的批处理方式，
+// 因此我们希望在同一事件中发生的优先级相同的所有更新都接收到相同的过期时间。否则我们会流泪。
+let currentEventTime = NoWork;
+
+export function requestCurrentTimeForUpdate() {
+  if ((executionContext & (RenderContext | CommitContext)) !== NoContext) {
+    return msToExpirationTime(now());
+  }
+
+  if (currentEventTime !== NoWork) {
+    return currentEventTime;
+  }
+
+  currentEventTime = msToExpirationTime(now());
+  return currentEventTime;
+}
+
+export function getCurrentTime() {
+  return msToExpirationTime(now());
+}
+
+/**
+ * 
+ * @param {ExpirationTime} currentTime 
+ * @param {Fiber} fiber 
+ * @param {null | SuspenseConfig} suspenseConfig 
+ */
+export function computeExpirationForFiber(currentTime, fiber, suspenseConfig) {
+  const mode = fiber.mode;
+  if ((mode & BatchedMode) === NoMode) {
+    return Sync;
+  }
+
+  const priorityLevel = getCurrentPriorityLevel();
+  if ((mode & ConcurrentMode) === NoMode) {
+    return priorityLevel === ImmediatePriority ? Sync : Batched
+  }
+
+  if ((executionContext & RenderContext) !== NoContext) {
+    return renderExpirationTime;
+  }
+
+  let expirationTime;
+  if (suspenseConfig !== null) {
+    expirationTime = computeSuspenseExpiration(currentTime, suspenseConfig.timeoutMs | 0 || LOW_PRIORITY_EXPIRATION);
+  } else {
+    switch (priorityLevel) {
+      case ImmediatePriority:
+        expirationTime = Sync;
+        break;
+      case UserBlockingPriority:
+        expirationTime = computeInteractiveExpiration(currentTime);
+        break;
+      case NormalPriority:
+      case LowPriority:
+        expirationTime = computeAsyncExpiration(currentTime);
+        break;
+      case IdlePriotity:
+        expirationTime = Idle;
+        break;
+      default:
+        // warn
+    }
+  }
+
+  // 如果正在渲染树，请不要在已渲染的过期时间更新。
+  if (workInProgressRoot !== null && expirationTime === renderExpirationTime) {
+    // 这是将此更新移动到单独批处理中的技巧
+    expirationTime -= 1;
+  }
+
+  return expirationTime;
+}
 
 /**
  * - 这被分成一个单独的函数，这样我们就可以用挂起的工作标记一个fiber，而不将其视为源自事件的典型更新；例如，重试一个挂起的边界不是一个更新，但它确实会安排纤程上的工作。
@@ -203,6 +290,10 @@ function popInteractions(prevInteractions) {
   if (enableSchedulerTracing) {
     __interactionsRef.current = prevInteractions;
   }
+}
+
+export function markCommitTimeOfFallback() {
+  globalMostRecentFallbackTime = now();
 }
 
 /**
@@ -388,21 +479,38 @@ function commitMutationEffects(root, renderPriorityLevel) {
     switch (primaryEffectTag) {
       case Placement: {
         commitPlacement(nextEffect);
+        nextEffect.effectTag &= ~Placement;
+        break;
       }
       case PlacementAndUpdate: {
+        commitPlacement(nextEffect);
+        // 清除effect标签中的“placement”，这样我们就知道在调用componentDidMount之类的任何生命周期之前，已经插入了它。
+        nextEffect.effectTag &= ~Placement;
 
+        // Update
+        const current = nextEffect.alternate;
+        commitWork(current, nextEffect);
+        break;
       }
       case Hydrating: {
-
+        nextEffect.effectTag &= ~Hydrating;
+        break;
       }
       case HydratingAndUpdate: {
-
+        nextEffect.effectTag &= ~Hydrating;
+        // update
+        const current = nextEffect.alternate;
+        commitWork(current, nextEffect);
+        break;
       }
       case Update: {
-
+        const current = nextEffect.alternate;
+        commitWork(current, nextEffect);
+        break;
       }
       case Deletion: {
-
+        commitDeletion(root, nextEffect, renderPriorityLevel);
+        break;
       }
     }
   }
@@ -495,7 +603,7 @@ function captureCommitPhaseErrorOnRoot(rootFiber, sourceFiber, error) {
   }
 }
 
-function captureCommitPhaseError(sourceFiber, error) {
+export function captureCommitPhaseError(sourceFiber, error) {
   if (sourceFiber.tag === HostRoot) {
     // 错误被抛出到根目录。没有父级，因此根本身应该捕获它。
     captureCommitPhaseErrorOnRoot(sourceFiber, sourceFiber, error);
@@ -533,8 +641,61 @@ function captureCommitPhaseError(sourceFiber, error) {
   }
 }
 
+
+function retryTimedOutBoundary(boundaryFiber, retryTime) {
+  // The boundary fiber (a Suspense component or SuspenseList component)
+  // previously was rendered in its fallback state. One of the promises that
+  // suspended it has resolved, which means at least part of the tree was
+  // likely unblocked. Try rendering again, at a new expiration time.
+  if (retryTime === NoWork) {
+    const suspenseConfig = null;
+    const currentTime = requestCurrentTimeForUpdate();
+    retryTime = computeExpirationForFiber(currentTime, boundaryFiber, suspenseConfig);
+  }
+
+  const root = markUpdateTimeFromFiberToRoot(boundaryFiber, retryTime);
+  if (root !== null) {
+    ensureRootIsScheduled(root);
+    schedulePendingInteractions(root, retryTime);
+  }
+}
+
+/**
+ * 解决重试的thenable
+ * @param {Fiber} boundaryFiber 
+ * @param {Thenable} thenable 
+ */
+export function resolveRetryThenable(boundaryFiber, thenable) {
+  let retryTime = NoWork;
+  let retryCache;
+  if (enableSuspenseServerRenderer) {
+    switch (boundaryFiber.tag) {
+      case SuspenseComponent:
+        retryCache = boundaryFiber.stateNode;
+        const suspenseState = boundaryFiber.memoizedState;
+        if (suspenseState !== null) {
+          retryTime = suspenseState.retryTime;
+        }
+        break;
+      case SuspenseListComponent:
+        retryCache = boundaryFiber.stateNode;
+        break;
+      default:
+        //warning
+    }
+  } else {
+    retryCache = boundaryFiber.stateNode;
+  }
+
+  if (retryCache !== null) {
+    retryCache.delete(thenable);
+  }
+
+  retryTimedOutBoundary(boundaryFiber, retryTime);
+}
+
 // 计算线程id
-function computedThreadID(root, expirationTime) {
+function computeThreadID(root, expirationTime) {
   // 每个根和过期时间的交互线程都是唯一的。
   return expirationTime * 1000 + root.interactionThreadID;
 }
@@ -572,7 +733,7 @@ function scheduleInteractions(root, expirationTime, interactions) {
 
     const subscriber = __subscriberRef.current;
     if (subscriber !== null) {
-      const threadID = computedThreadID(root, expirationTime);
+      const threadID = computeThreadID(root, expirationTime);
       subscriber.onWorkScheduled(interactions, threadID);
     }
   }
@@ -608,7 +769,7 @@ function finishPendingInteractions(root, committedExpirationTime) {
   try {
     subscriber = __subscriberRef.current;
     if (subscriber !== null && root.memoizedInteractions.size > 0) {
-      const threadID = computedThreadID(root, committedExpirationTime);
+      const threadID = computeThreadID(root, committedExpirationTime);
       subscriber.onWorkStopped(root.memoizedInteractions, threadID); // TODO: where is onWorkStopped -> Scheduler/src/TracingSubscription
     }
   } catch (error) {

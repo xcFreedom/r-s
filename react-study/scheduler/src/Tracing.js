@@ -26,3 +26,85 @@ export { interactionsRef as __interactionsRef, subscriberRef as __subscriberRef 
 export function unstable_getThreadID() {
   return ++threadIDCounter;
 }
+
+export function unstable_wrap(callback, threadID) {
+  if (!enableSchedulerTracing) {
+    return callback;
+  }
+
+  const wrappedInteractions = interactionsRef.current;
+
+  let subscriber = subscriberRef.current;
+  if (subscriber !== null) {
+    subscriber.onWorkScheduled(wrappedInteractions, threadID);
+  }
+
+  wrappedInteractions.forEach(interaction => {
+    interaction.__count++;
+  });
+
+  let hasRun = false;
+
+  function wrapped() {
+    const prevInteractions = interactionsRef.current;
+    interactionsRef.current = wrappedInteractions;
+
+    subscriber = subscriberRef.current;
+
+    try {
+      let returnValue;
+
+      try {
+        if (subscriber !== null) {
+          subscriber.onWorkStarted(wrappedInteractions, threadID);
+        }
+      } finally {
+        try {
+          returnValue = callback.apply(undefined, arguments);
+        } finally {
+          interactionsRef.current = prevInteractions;
+
+          if (subscriber !== null) {
+            subscriber.onWorkStopped(wrappedInteractions, threadID);
+          }
+        }
+      }
+
+      return returnValue;
+    } finally {
+      if (!hasRun) {
+        // 我们只希望包装的函数执行一次，但如果它执行了不止一次，只会减少一次未完成的交互计数。
+        hasRun = true;
+
+        // 更新所有包装的交互的挂起异步计数。如果这是其中任何一个的最后一个计划异步工作，请将它们标记为已完成。
+        wrappedInteractions.forEach(interaction => {
+          interaction.__count--;
+
+          if (subscriber !== null && interaction.__count === 0) {
+            subscriber.onInteractionScheduledWorkCompleted(interaction);
+          }
+        });
+      }
+    }
+  }
+
+  wrapped.cancel = function cancel() {
+    subscriber = subscriberRef.current;
+
+    try {
+      if (subscriber !== null) {
+        subscriber.onWorkCanceled(wrappedInteractions, threadID);
+      }
+    } finally {
+      wrappedInteractions.forEach(interaction => {
+        interaction.__count--;
+
+        if (subscriber && interaction.__count === 0) {
+          subscriber.onInteractionScheduledWorkCompleted(interaction);
+        }
+      });
+    }
+  };
+
+  return wrapped;
+}

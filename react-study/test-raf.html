@@ -36,11 +36,17 @@
     }
   </script> -->
   <div id="t">
-    <div id="t-1">1</div>
+    <div id="t-1"><p>1</p><p>t-1-p</p></div>
     <div id="t-2">
       <div id="t-2-2">2-2</div>
     </div>
   </div>
+  <select name="test" id="select-" multiple>
+    <option value="1">1</option>
+    <option value="2">2</option>
+    <option value="3">3</option>
+  </select>
+  <input type="text" id="input">
   <script>
     window.onload = function() {
       const child = document.createElement('div');
@@ -52,6 +58,8 @@
       const parent = document.getElementById('t-2');
 
       parent.insertBefore(child, beforeChild);
+
+      console.log(parent.nodeValue);
     }
   </script>
 </body>

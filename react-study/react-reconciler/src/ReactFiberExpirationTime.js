@@ -2,7 +2,10 @@ import MAX_SIGNED_31_BIT_INT from './maxSigned31BitInt';
 
 export const NoWork = 0;
 export const Never  = 1;
+export const Idle   = 2;
+let ConinuousHydration = 3;
 export const Sync   = MAX_SIGNED_31_BIT_INT;
+export const Batched = Sync - 1;
 
 const UNIT_SIZE = 10;
 const MAGIC_NUMBER_OFFSET = MAX_SIGNED_31_BIT_INT - 1;
@@ -30,6 +33,18 @@ function ceiling(num, precision) {
  */
 function computeExpirationBucket(currentTime, expirationInMs, bucketSizeMs) {
   return MAGIC_NUMBER_OFFSET - ceiling(MAGIC_NUMBER_OFFSET - currentTime + expirationInMs / UNIT_SIZE, bucketSizeMs / UNIT_SIZE);
+}
+
+
+export const LOW_PRIORITY_EXPIRATION = 5000;
+export const LOW_PRIORITY_BATCH_SIZE = 250;
+
+export function computeAsyncExpiration(currentTime) {
+  return computeExpirationBucket(currentTime, LOW_PRIORITY_EXPIRATION, LOW_PRIORITY_BATCH_SIZE);
+}
+
+export function computeSuspenseExpiration(currentTime, timeoutMs) {
+  return computeExpirationBucket(currentTime, timeoutMs, LOW_PRIORITY_BATCH_SIZE);
 }
 
 

@@ -98,7 +98,7 @@ function validateResponderTargetEventTypes(eventType, responder) {
 }
 
 // 遍历和处理事件响应程序实例
-function traverseAndHandleeventResponderInstances(topLevelType, targetFiber, nativeEvent, nativeEventTarget, eventSystemFlags) {
+function traverseAndHandleEventResponderInstances(topLevelType, targetFiber, nativeEvent, nativeEventTarget, eventSystemFlags) {
   const isPassiveEvent = (eventSystemFlags & IS_PASSIVE) !== 0;
   const isPassiveSupported = (eventSystemFlags & PASSIVE_NOT_SUPPORTED) === 0;
   const isPassive = isPassiveEvent || !isPassiveSupported;
@@ -165,6 +165,21 @@ function traverseAndHandleeventResponderInstances(topLevelType, targetFiber, nat
 
 }
 
+export function mountEventResponder(responder, responderInstance, props, state) {
+  const onMount = responder.onMount;
+  if (onMount !== null) {
+    const previousInstance = currentInstance;
+    currentInstance = responderInstance;
+    try {
+      batchedEventUpdates(() => {
+        onMount(eventResponderContext, props, state);
+      })
+    } finally {
+      currentInstance = previousInstance;
+    }
+  }
+}
+
 function validateResponderContext() {
   // invariant(currentInstance !== null, '.....);
 }
@@ -182,7 +197,7 @@ export function dispatchEventForResponderEventSystem(topLevelType, targetFiber, 
     currentTimeStamp = nativeEvent.timeStamp;
     try {
       batchedEventUpdates(() => {
-        traverseAndHandleeventResponderInstances(topLevelType, targetFiber, nativeEvent, nativeEventTarget, eventSystemFlags);
+        traverseAndHandleEventResponderInstances(topLevelType, targetFiber, nativeEvent, nativeEventTarget, eventSystemFlags);
       });
     } finally {
       currentInstance = previousInstance;
@@ -191,4 +206,27 @@ export function dispatchEventForResponderEventSystem(topLevelType, targetFiber, 
       currentPropagationBehavior = previousPropagationBehavior;
     }
   }
+}
+
+export function addRootEventTypesForResponderInstance(responderInstance, rootEventTypes) {
+  for (let i = 0; i < rootEventTypes.length; i++) {
+    const rootEventType = rootEventTypes[i];
+    registerRootEventType(rootEventType, responderInstance);
+  }
+}
+
+function registerRootEventType(rootEventType, eventResponderInstance) {
+  let rootEventResponderInstances = rootEventTypesToEventResponderInstances.get(rootEventType);
+
+  if (rootEventResponderInstances === undefined) {
+    rootEventResponderInstances = new Set();
+    rootEventTypesToEventResponderInstances.set(rootEventType, rootEventResponderInstances);
+  }
+
+  let rootEventTypesSet = eventResponderInstance.rootEventTypes;
+  if (rootEventTypesSet) {
+    rootEventTypesSet = eventResponderInstance.rootEventTypes = new Set();
+  }
+  rootEventTypesSet.add(rootEventType);
+  rootEventResponderInstances.add(eventResponderInstance);
 }

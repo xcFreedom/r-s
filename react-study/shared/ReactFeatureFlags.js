@@ -16,3 +16,12 @@ export const enableFlareAPI = false;
 
 // Experimental Host Component support.
 export const enableFundamentalAPI = false;
+
+export const enableTrustedTypesIntegration = false;
+
+export const disableJavaScriptURLs = false;
+
+export const disableInputAttributeSyncing = false;
+
+// Experimental Scope support.
+export const enableScopeAPI = false;

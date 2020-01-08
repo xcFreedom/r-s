@@ -1,24 +1,87 @@
-1. ReactDOM.js作为入口，调用```ReactDOM.render```.
-2. ```ReactDOM.render```内调用```legacyRenderSubtreeIntoContainer```.
-3. ```legacyRenderSubtreeIntoContainer```内调用```legacyCreateRootFromDOMContainer```从dom节点中创建```ReactRoot```.
-4. ```legacyCreateRootFromDOMContainer```清理dom节点，返回```ReactRoot```的实例
-5. ```ReactRoot```内调用```createContainer```创建```FiberRoot```，挂载到自身的```_internalRoot```属性上。
-6. ```createContainer```是```createFiberRoot```的一层包装。
-7. ```createFiberRoot```构造```FiberRoot```对象，调用```createHostRootFiber```创建一个```Fiber```对象作为```host root```。并把```FiberRoot```中的```current```属性指向这个```Fiber```，```Fiber```的```stateNode```指向```FiberRoot```。
-8. ```legacyRenderSubtreeInfoContainer```在创建```ReactRoot```完成之后，调用```ReactRoot.render```开启初次页面渲染.
-9. ```ReactRoot.render```中，首先创建一个```ReactWork```，然后调用```updateContainer```开始渲染过程。
-10. ```updateContainer```中拿到```host root Fiber```，计算```ExpirationTime```，然后调用```updateContainerAtExpirationTime```
-11. ```updateContainerAtExpirationTime```调用```getContextForSubtree```计算```context```，更新```FiberRoot```的```context```，然后调用```scheduleRootUpdate```。
-12. ```scheduleRootUpdate```开始调度更新，首先根据```updateContainer```计算的```ExpirationTime```，调用```createUpdate```，创建一个```Update```。然后调用```enqueueUpdate```把```host root Fiber```和```Update```传入。
-13. ```enqueueUpdate```根据```Fiber```的```alternate```和```updateQueue```创建两个更新队列
-14. 
-
-
-
-
-
-
 hydrate：注水，ssr时服务器输出字符串，而浏览器需要根据字符串完成react的初始化工作，这个过程就是hydrate。
 hydrate 描述的是 ReactDOM 复用 ReactDOMServer 服务端渲染的内容时尽可能保留结构，并补充事件绑定等 Client 特有内容的过程。
 
 dehydrate：脱水，一般指的是服务器端渲染时，准备纯数据的过程，这些数据随HTML一起发送给浏览器。
+
+
+```
+interface BaseFiberRoot {
+  // root节点
+  containerInfo: any;
+  // 当前应用对应的fiber，就是RootFiber
+  current: Fiber;
+
+  /**
+  * 以下的优先级是用来区分
+  * 1) 没有提交(committed)的任务
+  * 2) 没有提交的挂起任务
+  * 3) 没有提交的可能被挂起的任务
+  */
+
+  // 最老和最新的提交的时候被挂起的任务
+  earlisestSuspendedTime: ExpirationTime;
+  latestSuspendedTime: ExpirationTime;
+   
+  // 最新的通过一个promise被resolve并且可以重新尝试的优先级
+  latestPingedTime: ExpirationTime;
+
+
+  didError: boolean;
+
+  // 正在等待提交的任务的expirationTime
+  pendingCommitExpirationTime: ExpirationTime;
+
+  // 已经完成的任务的fiberRoot对象，如果只有一个Root，那他永远只可能是这个Root对应的fiber，或者null
+  // 在commit阶段只会处理这个值对应的任务
+  finishedWork: Fiber | null;
+
+  // 再任务被挂起时，通过setTimeout设置的返回内容
+  // 用来下一次如果有新的任务挂起时清理还没触发的timeout
+  timeoutHandle: TimeoutHandle | NoTimeout;
+
+  // 顶层context，只有主动调用renderSubtreeIntoContainer才会有用
+  context: Object;
+  pendingContext: Object;
+
+  hydrate: boolean;
+
+  // 当前root上剩余的过期时间，标记要执行哪个优先级的任务
+  nextExpirationTimeToWorkOn: ExpirationTime;
+
+  // 当前更新对应的过期时间
+  expirationTime: ExpirationTime;
+
+  firstBatch: Batch | null;
+
+  // root之间关联的链表结构。
+  nextScheduledRoot: FiberRoot | null; 
+}
+```
+
+
+### Fiber
+
+每一个ReactElement对应一个Fiber对象
+
+记录节点状态
+
+串联树结构
+
+```
+interface FiberNode {
+  // 记录组件类型
+  tag: WorkTag;
+}
+```
+
+
+## Responder
+React新的事件系统支持
+```
+import { PressResponder } from 'react-events/press';
+<div responders={<PressResponder />} />
+```
+
+## createFundamental
+
+这是个啥玩意，还没明白

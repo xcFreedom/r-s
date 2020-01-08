@@ -11,12 +11,19 @@ import {
   IncompleteClassComponent,
   FundamentalComponent,
   DehydratedFragment,
+  MemoComponent,
+  Profiler,
+  SuspenseComponent,
+  SuspenseListComponent,
+  ScopeComponent,
 } from "react-study/shared/ReactWorkTags";
 import {
   NoEffect as NoHookEffect,
   UnmountPassive,
   MountPassive,
   UnmountSnapshot,
+  UnmountMutation,
+  MountMutation,
 } from "./ReactHookEffectTags";
 import { getStackByFiberInDevAndProd } from "./ReactCurrentFiber";
 import getComponentName from "react-study/shared/getComponentName";
@@ -28,8 +35,25 @@ import {
   insertBefore,
   appendChildToContainer,
   appendChild,
+  hideInstance,
+  unhideInstance,
+  hideTextInstance,
+  unhideTextInstance,
+  supportsHydration,
+  commitHydratedContainer,
+  supportsPersistence,
+  commitUpdate,
+  commitTextUpdate,
+  updateFundamentalComponent
 } from './ReactFiberHostConfig';
-import { enableFundamentalAPI } from "react-study/shared/ReactFeatureFlags";
+import { enableFundamentalAPI, enableSuspenseCallback, enableSchedulerTracing, enableFlareAPI, enableScopeAPI } from "react-study/shared/ReactFeatureFlags";
+import { markCommitTimeOfFallback, resolveRetryThenable, captureCommitPhaseError } from "./ReactFiberWorkLoop";
+import { unstable_wrap as Schedule_tracing_wrap } from '../../scheduler/tracing'
+import { updateEventListeners } from "./ReactFiberEvents";
+import { onCommitUnmount } from "./ReactFiberDevToolsHook";
+import { NormalPriority, runWithPriority } from "./SchedulerWithReactIntegration";
+
+const PossiblyWeakSet = typeof WeakSet === 'function' ? WeakSet : Set;
 
 /**
  * 
@@ -66,6 +90,59 @@ export function logError(boundary, errorInfo) {
     setTimeout(() => {
       throw e
     });
+  }
+}
+
+function callComponentWillUnmountWithTimer(current, instance) {
+  startPhaseTimer(current, 'componentWillUnmount');
+  instance.props = current.memoizedProps;
+  instance.state = current.memoizedState;
+  instance.componentWillUnmount();
+  stopPhaseTimer();
+}
+
+/**
+ * 安全的执行componentWillUnmount，捕获错误，以便它们不会中断卸载。
+ * @param {Fiber} current 
+ * @param {object} instance 
+ */
+function safelyCallComponentWillUnmount(current, instance) {
+  try {
+    callComponentWillUnmountWithTimer(current, instance);
+  } catch (unmountError) {
+    captureCommitPhaseError(current, unmountError);
+  }
+}
+
+/**
+ * 安全的删除ref
+ * @param {Fiber} current 
+ */
+function safelyDetachRef(current) {
+  const ref = current.ref;
+  if (ref !== null) {
+    if (typeof ref === 'function') {
+      try {
+        ref(null);
+      } catch (refError) {
+        captureCommitPhaseError(current, refError);
+      }
+    } else {
+      ref.current = null;
+    }
+  }
+}
+
+/**
+ * 安全的调用effect的销毁函数
+ * @param {Fiber} current 
+ * @param {Function} destory 
+ */
+function safelyCallDestory(current, destory) {
+  try {
+    destory();
+  } catch (err) {
+    captureCommitPhaseError(current, error);
   }
 }
 
@@ -112,7 +189,7 @@ export function commitBeforeMutationLifeCycles(current, finishedWork) {
 }
 
 /**
- * 
+ * 处理effect list
  * @param {number} unmountTag 
  * @param {number} mountTag 
  * @param {Fiber} finishedWork 
@@ -162,7 +239,63 @@ export function commitPassiveHookEffects(finishedWork) {
 }
 
 /**
- * 
+ * 隐藏/显示所有的children
+ * @param {Fiber} finishedWork 
+ * @param {Boolean} isHidden 
+ */
+function hideOrUnhideAllChildren(finishedWork, isHidden) {
+  if (supportsMutation) {
+    // 我们只插入了顶部的fiber，但是我们需要递归它的子节点，来找到所有的终端节点。
+    let node = finishedWork;
+    while (true) {
+      // 普通dom节点，控制display显示/隐藏，猜测可能是为了当child都添加完之后，才会显示，但是unhide里面是根据props来控制display的。暂时还不明白
+      if (node.tag === HostComponent) {
+        const instance = node.stateNode;
+        if (isHidden) {
+          hideInstance(instance);
+        } else {
+          unhideInstance(node.stateNode, node.memoizedProps);
+        }
+      } else if (node.tag === HostText) {
+        const instance = node.stateNode;
+        if (isHidden) {
+          hideTextInstance(instance);
+        } else {
+          unhideTextInstance(instance, node.memoizedProps);
+        }
+      } else if (
+        node.tag === SuspenseComponent &&
+        node.memoizedState !== null &&
+        node.memoizedState.dehydrated === null
+      ) {
+        // TODO: 暂时还不明白为什么是node.child.sibling，可能Suspnse组件的child的兄弟节点才是真实的children
+        // 找到超时的嵌套挂起组件。跳过应该保持隐藏的主子片段。
+        const fallbackChildFragement = node.child.sibling;
+        fallbackChildFragement.return = node;
+        node = fallbackChildFragement;
+        continue;
+      } else if (node.child !== null) {
+        node.child.return = node;
+        node = node.child;
+        continue;
+      }
+      if (node === finishedWork) {
+        return;
+      }
+      while (node.sibling === null) {
+        if (node.return === null || node.return === finishedWork) {
+          return;
+        }
+        node = node.return;
+      }
+      node.sibling.return = node.return;
+      node = node.sibling;
+    }
+  }
+}
+
+/**
+ * ref
  * @param {Fiber} current 
  */
 export function commitDetachRef(current) {
@@ -173,6 +306,98 @@ export function commitDetachRef(current) {
     } else {
       currentRef.current = null;
     }
+  }
+}
+
+/**
+ * 用户发起的错误（生命周期和refs）不应中断删除，因此不要让它们抛出。主机发起的错误应该会中断删除，所以没关系
+ * @param {FiberRoot} finishedRoot 
+ * @param {Fiber} current 
+ * @param {RenderPriorityLevel} renderPriorityLevel 
+ */
+function commitUnmount(finishedRoot, current, renderPriorityLevel) {
+  onCommitUnmount(current); // dev tools
+  switch (current.tag) {
+    case FunctionComponent:
+    case ForwardRef:
+    case MemoComponent:
+    case SimpleMemoComponent: {
+      const updateQueue = current.updateQueue;
+      if (updateQueue !== null) {
+        const lastEffect = updateQueue.lastEffect;
+        if (lastEffect !== null) {
+          const firstEffect = lastEffect.next;
+
+          // 当owner fiber被删除时，在同步commit阶段调用effect hook的销毁函数。这是对实现复杂性的让步，在被动effect阶段调用它（通常是在更新期间依赖关系发生更改时）
+          // 需要再次遍历已删除的fiber的子级，或者将卸载effect作为fiber effect list的一部分包括在内。
+          // 因为这是在同步提交阶段，所以我们需要更改优先级。
+          const priorityLevel = renderPriorityLevel > NormalPriority ? NormalPriority : renderPriorityLevel;
+          runWithPriority(priorityLevel, () => {
+            let effect = firstEffect;
+            do {
+              const destory = effect.destory;
+              if (destory !== undefined) {
+                safelyCallDestory(current, destory);
+              }
+              effect = effect.next;
+            } while (effect !== firstEffect);
+          });
+        }
+      }
+      break;
+    }
+    case ClassComponent: {
+      safelyDetachRef(current);
+      const instance = current.stateNode;
+      if (typeof instance.componentWillUnmount === 'function') {
+        safelyCallComponentWillUnmount(current, instance);
+      }
+    }
+  }
+}
+
+/**
+ * 提交嵌套的unmount
+ * @param {FiberRoot} finishedRoot 
+ * @param {Fiber} root 
+ * @param {ReactPriorityLevel} renderPriorityLevel 
+ */
+function commitNestedUnmounts(finishedRoot, root, renderPriorityLevel) {
+  // 当我们在已经移除的节点中时，我们不想在内部节点上调用removeChild，因为它们的top已经移除。
+  // 我们还希望从树中移除此节点之前，在所有的children上调用componentWillUnmount。
+  // 因此，在节点内，执行一次内部循环
+  let node = root;
+  while (true) {
+
+  }
+}
+
+
+/**
+ * 
+ * @param {Fiber} finishedWork 
+ */
+function commitContainer(finishedWork) {
+  if (!supportsPersistence) {
+    return;
+  }
+
+  // 不是浏览器渲染。
+  switch (finishedWork.tag) {
+    case ClassComponent:
+    case HostComponent:
+    case HostText:
+    case FundamentalComponent: {
+      return;
+    }
+    case HostRoot:
+    case HostPortal: {
+      const portalOrRoot = finishedWork.stateNode;
+      const { containerInfo, pendingChildren } = portalOrRoot;
+      replaceContainerChildren(containerInfo, pendingChildren);
+    }
+    default: 
+      // warn
   }
 }
 
@@ -342,6 +567,275 @@ export function commitPlacement(finishedWork) {
     }
     node.sibling.return = node.return;
     node = node.sibling;
+  }
+}
+
+/**
+ * 递归删除host节点，解除引用，并且调用componentWillUnmount
+ * @param {FiberRoot} finishedRoot 
+ * @param {Fiber} current 
+ * @param {ReactPriorityLevel} renderPriorityLevel 
+ */
+function unmountHostComponents(finishedRoot, current, renderPriorityLevel) {
+  // 我们只删除了顶部的fiber，但是我们需要递归它的子节点来找到所有的终端节点。
+  let node = current;
+
+  // 如果currentParentIsValid为false，则每次迭代currentParent都会填充节点的宿主父节点。
+  let currentParentIsValid = false;
+
+  // 这两个变量必须一起更新
+  let currentParent;
+  let currentParentIsContainer;
+
+  while (true) {
+    if (!currentParentIsValid) {
+      let parent = node.return;
+      findParent: while (true) {
+        const parentStateNode = parent.stateNode;
+        switch (parent.tag) {
+          case HostComponent:
+            currentParent = parentStateNode;
+            currentParentIsContainer = false;
+            break findParent;
+          case HostRoot:
+            currentParent = parentStateNode.containerInfo;
+            currentParentIsContainer = true;
+            break findParent;
+          case HostPortal:
+            currentParent = parentStateNode.containerInfo;
+            currentParentIsContainer = true;
+            break findParent;
+          case FundamentalComponent:
+            if (enableFundamentalAPI) {
+              currentParent = parentStateNode.instance;
+              currentParentIsContainer = false;
+            }
+        }
+        parent = parent.return;
+      }
+      currentParentIsValid = true;
+    }
+
+    if (node.tag === HostComponent || node.tag === HostText) {
+      commitNestedUnmounts()
+    }
+  }
+}
+
+/**
+ * 删除
+ * @param {FiberRoot} finishedRoot 
+ * @param {Fiber} current 
+ * @param {ReactPriorityLevel} renderPriorityLevel 
+ */
+export function commitDeletion(finishedRoot, current, renderPriorityLevel) {
+  if (supportsMutation) {
+    // 递归地从父节点中删除所有主机节点。
+    // 分离引用并对整个子树调用componentWillUnmount（）。
+    unmountHostComponents(finishedRoot, current, renderPriorityLevel);
+  } else {
+
+  }
+}
+
+/**
+ * 更新
+ * @param {Fiber} current 
+ * @param {Fiber} finishedWork 
+ */
+export function commitWork(current, finishedWork) {
+  if (!supportsMutation) {
+    switch (finishedWork.tag) {
+      case FunctionComponent:
+      case ForwardRef:
+      case MemoComponent:
+      case SimpleMemoComponent: {
+        commitHookEffectList(UnmountMutation, MountMutation, finishedWork);
+        return;
+      }
+      case Profiler: {
+        return;
+      }
+      case SuspenseComponent: {
+        commitSuspenseComponent(finishedWork);
+        attachSuspenseRetryListeners(finishedWork);
+        return;
+      }
+      case SuspenseListComponent: {
+        attachSuspenseRetryListeners(finishedWork);
+        return;
+      }
+      case HostRoot: {
+        if (supportsHydration) {
+          const root = finishedWork.stateNode;
+          if (root.hydrate) {
+            // 只需要注水一次
+            root.hydrate = false;
+            commitHydratedContainer(root.containerInfo);
+          }
+        }
+        break;
+      }
+    }
+
+    commitContainer(finishedWork);
+    return;
+  }
+
+  switch (finishedWork.tag) {
+    case FunctionComponent:
+    case ForwardRef:
+    case MemoComponent:
+    case SimpleMemoComponent: {
+      // 我们目前从未使用MountMutation, 但useLayout使用UnmountMutation。
+      commitHookEffectList(UnmountMutation, MountMutation, finishedWork);
+      return;
+    }
+    case ClassComponent: {
+      return;
+    }
+    case HostComponent: {
+      const instance = finishedWork.stateNode;
+      if (instance !== null) {
+        // commit先前准备的工作
+        const newProps = finishedWork.memoizedProps;
+        // 对于hydration，我们重用更新路径，但我们将oldProps视为newProps。
+        // 在这种情况下，updatePayload将包含真正的更改。
+        const oldProps = current !== null ? current.memoizedProps : newProps;
+        const type = finishedWork.type;
+        const updatePayload = finishedWork.updateQueue;
+        finishedWork.updateQueue = null;
+        if (updatePayload !== null) {
+          commitUpdate(instance, updatePayload, type, oldProps, newProps, finishedWork);
+        }
+        if (enableFlareAPI) {
+          const prevListeners = oldProps.listeners;
+          const nextListeners = newProps.listeners;
+          if (prevListeners !== nextListeners) {
+            updateEventListeners(nextListeners, finishedWork, null);
+          }
+        }
+      }
+      return;
+    }
+    case HostText: {
+      const textInstance = finishedWork.stateNode;
+      const newText = finishedWork.memoizedProps;
+      const oldText = current !== null ? current.memoizedProps : newText;
+      commitTextUpdate(textInstance, oldText, newText);
+      return;
+    }
+    case HostRoot: {
+      if (supportsHydration) {
+        const root = finishedWork.stateNode;
+        if (root.hydrate) {
+          root.hydrate = false;
+          commitHydratedContainer(root.containerInfo);
+        }
+      }
+      return;
+    }
+    case Profiler: {
+      return;
+    }
+    case SuspenseComponent: {
+      commitSuspenseComponent(finishedWork);
+      attachSuspenseRetryListeners(finishedWork);
+      return;
+    }
+    case SuspenseListComponent: {
+      attachSuspenseRetryListeners(finishedWork);
+      return;
+    }
+    case IncompleteClassComponent: {
+      return;
+    }
+    case FundamentalComponent: {
+      if (enableFundamentalAPI) {
+        const fundamentalInstance = finishedWork.stateNode;
+        updateFundamentalComponent(fundamentalInstance);
+      }
+    }
+    case ScopeComponent: {
+      if (enableScopeAPI) {
+        const scopeInstance = finishedWork.stateNode;
+        scopeInstance.fiber = finishedWork;
+        if (enableFlareAPI) {
+          const newProps = finishedWork.memoizedProps;
+          const oldProps = current !== null ? current.memoizedProps : newProps;
+          const prevListeners = oldProps.listeners;
+          const nextListeners = newProps.listeners;
+          if (prevListeners !== nextListeners) {
+            updateEventListeners(nextListeners, finishedWork, null);
+          }
+        }
+      }
+      return;
+    }
+    default: {
+      // warn
+    }
+  }
+}
+
+/**
+ * Suspense组件
+ * @param {Fiber} finishedWork 
+ */
+function commitSuspenseComponent(finishedWork) {
+  let newState = finishedWork.memoizedState;
+  let newDidTimeout;
+  let primaryChildParent = finishedWork;
+  if (newState === null) {
+    newDidTimeout = false;
+  } else {
+    newDidTimeout = true;
+    primaryChildParent = finishedWork.child;
+    markCommitTimeOfFallback();
+  }
+
+  if (supportsMutation && primaryChildParent !== null) {
+    hideOrUnhideAllChildren(primaryChildParent, newDidTimeout);
+  }
+
+  if (enableSuspenseCallback && newState !== null) {
+    const suspenseCallback = finishedWork.memoizedProps.suspenseCallback;
+    if (typeof suspenseCallback === 'function') {
+      const thenables = finishedWork.updateQueue;
+      if (thenables !== null) {
+        suspenseCallback(new Set(thenables));
+      }
+    }
+  }
+}
+
+/**
+ * 附加Suspense重试listener
+ * @param {Fiber} finishedWork 
+ */
+function attachSuspenseRetryListeners(finishedWork) {
+  // 如果suspense对应的组件刚刚超时, 它将会有thenable的Set.
+  // 遍历所有的thenable，添加一个listener，方便当那个Promise变成resolve状态时, React尝试在主状态下重新呈现边界。
+  const thenables = finishedWork.updateQueue;
+  if (thenables !== null) {
+    finishedWork.updateQueue = null;
+    let retryCache = finishedWork.stateNode;
+    if (retryCache === null) {
+      retryCache = finishedWork.stateNode = new PossiblyWeakSet();
+    }
+    thenables.forEach(thenable => {
+      // 使用边界fiber放置冗余listener
+      let retry = resolveRetryThenable.bind(null, finishedWork, thenable);
+      if (!retryCache.has(thenable)) {
+        if (enableSchedulerTracing) {
+          if (thenable.__reactDoNotTraceInteractions !== true) {
+            retry = Schedule_tracing_wrap(retry);
+          }
+        }
+        retryCache.add(thenable);
+        thenable.then(retry, retry);
+      }
+    });
   }
 }
 

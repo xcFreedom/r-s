@@ -31,7 +31,7 @@ function FiberNode(tag, pendingProps, key, mode) {
   this.tag         = tag; // 标记不同的组件类型
   this.key         = key;
   this.elementType = null; // 表示fiber的对应元素的类型，比如'div'，Class
-  this.type        = null; // 表示fiber的真实类型，大部分情况下与elementType一样？
+  this.type        = null; // 表示fiber的真实类型，异步组件resolved之后返回的组件类型
   this.stateNode   = null; // fiber对应的实例
 
   // Fiber
@@ -44,11 +44,11 @@ function FiberNode(tag, pendingProps, key, mode) {
 
   this.pendingProps = pendingProps; // 新的props
   this.memoizedProps = null; // 当前的props
-  this.updateQueue = null; // fiber上的更新队列
+  this.updateQueue = null; // fiber上的更新队列，该Fiber对应的组件产生的Update会存放在这个队列里面
   this.memoizedState = null; // 当前的state
   this.dependencies = null; // fiber的context、events
 
-  this.mode = mode; // ./ReactTypeOfMode
+  this.mode = mode; // ./ReactTypeOfMode，默认继承父Fiber的mode
 
   // Effects(影响)
   this.effectTag = NoEffect; // 表示当前fiber要更新的方式 shared/ReactSideEffectTag.js

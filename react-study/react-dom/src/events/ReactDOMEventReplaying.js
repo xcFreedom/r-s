@@ -52,6 +52,10 @@ import {
 } from './DOMTopLevelEventTypes';
 import { IS_REPLAYED } from '../../../legacy-events/EventSystemFlags';
 import { unsafeCastDOMTopLevelTypeToString } from 'react-study/legacy-events/TopLevelEventTypes';
+import {
+  unstable_scheduleCallback as scheduleCallback,
+} from '../../../scheduler';
+import { NormalPriority } from 'react-study/scheduler/src/SchedulerPriorities';
 
 // 尝试同步混合 (fiber: Object) => void;
 let attemptSynchronousHydration;
@@ -374,4 +378,31 @@ function replayUnblockedEvents() {
   }
   queuedPointers.forEach(attemptReplayContinuousQueuedEvent);
   queuedPointerCaptures.forEach(attemptReplayContinuousQueuedEvent);
+}
+
+/**
+ * 调度回调，如果是未阻塞的
+ * @param {QueueReplayableEvent} queuedEvent 
+ * @param {Element|SuspenseInstance} unblocked 
+ */
+function scheduleCallbackIfUnblocked(queuedEvent, unblocked) {
+  if (queuedEvent.blockedOn === unblocked) {
+    queuedEvent.blockedOn = null;
+    if (!hasScheduledReplayAttempt) {
+      hasScheduledReplayAttempt = true;
+      // 安排回调以尝试重播当前已解除阻止的尽可能多的事件。第一个可能还没有被解除阻塞。我们可以提前检查以避免安排不必要的回调。
+      scheduleCallback(NormalPriority, replayUnblockedEvents);
+    }
+  }
+}
+
+/**
+ * 如果事件被阻止，重试
+ * @param {Element|SuspenseInstance} unblocked 
+ */
+export function retryIfBlockedOn(unblocked) {
+  // 将此上被阻止的任何内容标记为不再被阻止且符合重播条件。
+  if (queuedDiscreteEvents.length > 0) {
+    scheduleCallbackIfUnblocked
+  }
 }
