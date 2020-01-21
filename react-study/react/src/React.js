@@ -1,9 +1,11 @@
 import ReactCurrentDispatcher from './ReactCurrentDispatcher';
+import ReactCurrentBatchConfig from './ReactCurrentBatchConfig';
 import ReactCurrentOwner from './ReactCurrentOwner';
 
 // TODO:
 const ReactSharedInternals = {
   ReactCurrentDispatcher,
+  ReactCurrentBatchConfig,
   ReactCurrentOwner,
   assign: Object.assign,
 };

@@ -100,3 +100,11 @@ export function updateEventListeners(listeners, fiber, rootContainerInstance) {
     }
   }
 }
+
+export function createResponderListener(responder, props) {
+  const eventResponderListener = {
+    responder,
+    props,
+  };
+  return eventResponderListener;
+}

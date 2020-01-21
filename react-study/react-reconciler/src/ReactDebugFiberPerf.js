@@ -193,6 +193,12 @@ export function startWorkTimer(fiber) {
   }
 }
 
+export function stopWorkTimer(fiber) {
+  if (enableUserTimingAPI) {
+    // 暂时忽略
+  }
+}
+
 export function startPhaseTimer(fiber, phase) {
   if (enableUserTimingAPI) {
     if (!supportsUserTiming) {
@@ -321,6 +327,31 @@ export function stopCommitHostEffectsTimer() {
     endMark(
       `(Committing Host Effects: ${count} Total)`,
       '(Committing Host Effects)',
+      null,
+    );
+  }
+}
+
+export function startCommitLifeCyclesTimer() {
+  if (enableUserTimingAPI) {
+    if (!supportsUserTiming) {
+      return;
+    }
+    effectCountInCurrentCommit = 0;
+    beginMark('(Calling Lifecycle Methods)')
+  }
+}
+
+export function stopCommitLifeCyclesTimer(): void {
+  if (enableUserTimingAPI) {
+    if (!supportsUserTiming) {
+      return;
+    }
+    const count = effectCountInCurrentCommit;
+    effectCountInCurrentCommit = 0;
+    endMark(
+      `(Calling Lifecycle Methods: ${count} Total)`,
+      '(Calling Lifecycle Methods)',
       null,
     );
   }

@@ -6,7 +6,7 @@ import {
   ProfileMode,
 } from './ReactTypeOfMode';
 import {
-  HostRoot
+  HostRoot, HostComponent
 } from '../../shared/ReactWorkTags';
 import { NoEffect } from '../../shared/ReactSideEffectTags';
 
@@ -105,8 +105,20 @@ export function createWorkInProgress(current, pendingProps, expirationTime) {
     workInProgress.elementType = current.elementType;
     workInProgress.type = current.type;
     workInProgress.stateNode = current.stateNode;
+
+    workInProgress.alternate = current;
+    current.alternate = workInProgress;
   } else {
-    // TODO
+    workInProgress.pendingProps = pendingProps;
+
+    // 已经存在alternate，重置effectTag
+    workInProgress.effectTag = NoEffect;
+
+    // effect list不再有效了
+    workInProgress.nextEffect = null;
+    workInProgress.firstEffect = null;
+    workInProgress.lastEffect = null;
+
   }
 
   workInProgress.childExpirationTime = current.childExpirationTime;
@@ -116,9 +128,17 @@ export function createWorkInProgress(current, pendingProps, expirationTime) {
   workInProgress.memoizedProps = current.memoizedProps;
   workInProgress.memoizedState = current.memoizedState;
   workInProgress.updateQueue = current.updateQueue;
-  workInProgress.contextDependencies = current.contextDependencies;
+  
+  // 克隆依赖项。这在render阶段发生过变化，因为无法与current fiber共享
+  const currentDependencies = current.dependencies;
+  workInProgress.dependencies = currentDependencies === null ? null : {
+    expirationTime: currentDependencies.expirationTime,
+    firstContext: currentDependencies.firstContext,
+    responders: currentDependencies.responders,
+  };
+  
 
-  // 这些将在父进程的reconciliation被充血
+  // 这些属性将在parent reconcili的时候被覆盖
   workInProgress.sibling = current.sibling;
   workInProgress.index = current.index;
   workInProgress.ref = current.ref;
@@ -152,4 +172,11 @@ export function createHostRootFiber(tag) {
   }
 
   return createFiber(HostRoot, null, null, mode);
+}
+
+export function createFiberFromHostInstanceForDeletion() {
+  const fiber = createFiber(HostComponent, null, null, NoMode);
+  fiber.elementType = 'DELETED';
+  fiber.type = 'DELETED';
+  return fiber;
 }

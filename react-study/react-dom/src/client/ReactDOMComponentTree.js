@@ -9,6 +9,10 @@ const internalInstanceKey = '__reactInternalInstance$' + randomKey;
 const internalEventHandlersKey = '__reactEventHandlers$' + randomKey;
 const internalContainerInstanceKey = '__reactContainere$' + randomKey;
 
+export function precacheFiberNode(hostInst, node) {
+  node[internalInstanceKey] = hostInst;
+}
+
 export function markContainerAsRoot(hostRoot, node) {
   node[internalContainerInstanceKey] = hostRoot;
 }

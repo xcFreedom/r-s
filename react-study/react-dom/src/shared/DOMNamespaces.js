@@ -7,3 +7,25 @@ export const Namespaces = {
   mathml: MATH_NAMESPACE,
   svg: SVG_NAMESPACE,
 };
+
+export function getIntrinsicNamespace(type) {
+  switch (type) {
+    case 'svg':
+      return SVG_NAMESPACE;
+    case 'math':
+      return MATH_NAMESPACE;
+    default:
+      return HTML_NAMESPACE;
+  }
+}
+
+export function getChildNamespace(parentNamespace, type) {
+  if (parentNamespace == null || parentNamespace === HTML_NAMESPACE) {
+    return getIntrinsicNamespace(type);
+  }
+  if (parentNamespace === SVG_NAMESPACE && type === 'foreignObject') {
+    return HTML_NAMESPACE;
+  }
+
+  return parentNamespace;
+}

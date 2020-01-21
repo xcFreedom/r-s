@@ -1,4 +1,4 @@
-import { Passive, NoEffect, Snapshot, ContentReset, Placement } from "react-study/shared/ReactSideEffectTags";
+import { Passive, NoEffect, Snapshot, ContentReset, Placement, Update } from "react-study/shared/ReactSideEffectTags";
 import {
   FunctionComponent,
   ForwardRef,
@@ -24,6 +24,8 @@ import {
   UnmountSnapshot,
   UnmountMutation,
   MountMutation,
+  UnmountLayout,
+  MountLayout,
 } from "./ReactHookEffectTags";
 import { getStackByFiberInDevAndProd } from "./ReactCurrentFiber";
 import getComponentName from "react-study/shared/getComponentName";
@@ -44,14 +46,26 @@ import {
   supportsPersistence,
   commitUpdate,
   commitTextUpdate,
-  updateFundamentalComponent
+  updateFundamentalComponent,
+  unmountResponderInstance,
+  unmountFundamentalComponent,
+  removeChild,
+  removeChildFromContainer,
+  clearSuspenseBoundary,
+  clearSuspenseBoundaryFromContainer,
+  commitMount,
+  commitHydratedSuspenseInstance,
 } from './ReactFiberHostConfig';
-import { enableFundamentalAPI, enableSuspenseCallback, enableSchedulerTracing, enableFlareAPI, enableScopeAPI } from "react-study/shared/ReactFeatureFlags";
+import { enableFundamentalAPI, enableSuspenseCallback, enableSchedulerTracing, enableFlareAPI, enableScopeAPI, enableSuspenseServerRenderer, enableProfilerTimer } from "react-study/shared/ReactFeatureFlags";
 import { markCommitTimeOfFallback, resolveRetryThenable, captureCommitPhaseError } from "./ReactFiberWorkLoop";
 import { unstable_wrap as Schedule_tracing_wrap } from '../../scheduler/tracing'
 import { updateEventListeners } from "./ReactFiberEvents";
 import { onCommitUnmount } from "./ReactFiberDevToolsHook";
 import { NormalPriority, runWithPriority } from "./SchedulerWithReactIntegration";
+import { resolveDefaultProps } from "./ReactFiberLazyComponent";
+import { commitUpdateQueue } from "./ReactUpdateQueue";
+import { getPublicInstance } from "react-study/react-dom/src/client/ReactDOMHostConfig";
+import { getCommitTime } from "./ReactProfilerTimer";
 
 const PossiblyWeakSet = typeof WeakSet === 'function' ? WeakSet : Set;
 
@@ -167,7 +181,7 @@ export function commitBeforeMutationLifeCycles(current, finishedWork) {
           const instance = finishedWork.stateNode;
           // 我们可以在这里更新实例属性和状态，但是我们依赖于在最后一次呈现期间设置它们。
           const snapshot = instance.getSnapshotBeforeUpdate(
-            // TODO:暂时还没发现elementType是啥
+            // 元素类型与真实类型相等，一般情况下是相等的
             finishedWork.elementType === finishedWork.type ? prevProps : resolveDefaultProps(finishedWork.type, prevProps),
             prevState,
           );
@@ -189,7 +203,13 @@ export function commitBeforeMutationLifeCycles(current, finishedWork) {
 }
 
 /**
- * 处理effect list
+ * 处理effect list，effect函数的销毁与创建，
+ * useEffect生成effect时，tag为UnmountPassive | MountPassive
+ * commitBeforeMutationEffect传入tag: UnmountSnapshot, NoHookEffect，destory/create都不触发
+ * commitPassiveHookEffects第一次: UnmountPassive, NoHookEffect，触发destory
+ * commitPassiveHookEffects第二次: NoHookEffect，MountPassive，触发create
+ * commitWork调用时: UnmountMutation，MountMutation
+ * TODO:看到useEffect相关的创建更新流程之后再回来详细理解。
  * @param {number} unmountTag 
  * @param {number} mountTag 
  * @param {Fiber} finishedWork 
@@ -198,17 +218,19 @@ function commitHookEffectList(unmountTag, mountTag, finishedWork) {
   const updateQueue = finishedWork.updateQueue;
   let lastEffect = updateQueue !== null ? updateQueue.lastEffect : null;
   if (lastEffect !== null) {
+    // 找到第一个effect, 开始遍历
     const firstEffect = lastEffect.next;
     let effect = firstEffect;
     do {
+      // 卸载时执行destory，只要不是NoHookEffect，就会执行destory
       if ((effect.tag & unmountTag) !== NoHookEffect) {
-        // Unmount
         const destory = effect.destory;
         effect.destory = undefined;
         if (destory !== undefined) {
           destory();
         }
       }
+      // 装载时执行create
       if ((effect.tag & mountTag) !== NoHookEffect) {
         // Mount
         const create = effect.create;
@@ -220,6 +242,7 @@ function commitHookEffectList(unmountTag, mountTag, finishedWork) {
 }
 
 /**
+ * 提交被动的effects
  * @param {Fiber} finishedWork 
  */
 export function commitPassiveHookEffects(finishedWork) {
@@ -235,6 +258,127 @@ export function commitPassiveHookEffects(finishedWork) {
       default:
         break;
     }
+  }
+}
+
+/**
+ * commit阶段，触发生命周期
+ * @param {FiberRoot} finishedRoot 
+ * @param {Fiber} current 
+ * @param {Fiber} finishedWork 
+ * @param {ExpirationTime} committedExpirationTime 
+ */
+export function commitLifeCycles(finishedRoot, current, finishedWork, committedExpirationTime) {
+  switch (finishedWork.tag) {
+    case FunctionComponent:
+    case ForwardRef:
+    case SimpleMemoComponent: {
+      commitHookEffectList(UnmountLayout, MountLayout, finishedWork);
+      break;
+    }
+    case ClassComponent: {
+      const instance = finishedWork.stateNode;
+      if (finishedWork.effectTag & Update) {
+        // work-in-progress不存在认为，fiber第一次初始化
+        if (current === null) {
+          startPhaseTimer(finishedWork, 'componentDidMount');
+          // 我们可以在这里更新实例属性和状态，但是我们依赖于在最后一次呈现期间设置它们。
+          instance.componentDidMount();
+          stopPhaseTimer();
+        } else {
+          // TODO: elementType与type何时不等，需要在fiber初始化阶段知道，暂时还不明白
+          const prevProps = finishedWork.elementType === finishedWork.type ? current.memoizedProps : resolveDefaultProps(finishedWork.type, current.memoizedProps);
+          const prevState = current.memoizedState;
+          startPhaseTimer(finishedWork, 'componentDidUpdate');
+          // 我们可以在这里更新实例属性和状态，但是我们依赖于在最后一次呈现期间设置它们。
+          instance.componentDidUpdate(prevProps, prevState. instance.__reactInternalSnapshotBeforeUpdate);
+          stopPhaseTimer();
+        }
+      }
+      const updateQueue = finishedWork.updateQueue;
+      if (updateQueue !== null) {
+        // 我们可以在这里更新实例属性和状态，但是我们依赖于在最后一次呈现期间设置它们。
+        commitUpdateQueue(finishedWork, updateQueue, instance, committedExpirationTime);
+      }
+      return;
+    }
+    case HostRoot: {
+      const updateQueue = finishedWork.updateQueue;
+      if (updateQueue !== null) {
+        let instance = null;
+        if (finishedWork.child !== null) {
+          switch (finishedWork.child.tag) {
+            case HostComponent:
+              instance = getPublicInstance(finishedWork.child.stateNode);
+              break;
+            case ClassComponent:
+              instance = finishedWork.child.stateNode;
+              break;
+          }
+        }
+        commitUpdateQueue(finishedWork, updateQueue, instance, committedExpirationTime);
+      }
+      return;
+    }
+    case HostComponent: {
+      const instance = finishedWork.stateNode;
+      // 渲染器可以安排在HostComponent mounted之后完成的工作
+      // （例如，DOM渲染器可以安排输入和表单控件的自动聚焦）。
+      // 这些效果只应在组件首次mount时提交，即没有current/alternate组件时提交。
+      if (current === null && finishedWork.effectTag & Update) {
+        const type = finishedWork.type;
+        const props = finishedWork.memoizedProps;
+        commitMount(instance, type, props, finishedWork);
+      }
+      return;
+    }
+    case HostText: {
+      // 没有text的生命周期
+      return;
+    }
+    case HostPortal: {
+      // 没有portal的生命周期
+      return;
+    }
+    case Profiler: {
+      if (enableProfilerTimer) {
+        const onRender = finishedWork.memoizedProps.onRender;
+        if (typeof onRender === 'function') {
+          if (enableSchedulerTracing) {
+            onRender(
+              finishedWork.memoizedProps.id,
+              current === null ? 'mount' : 'update',
+              finishedWork.actualDuration,
+              finishedWork.treeBaseDuration,
+              finishedWork.actualStartTime,
+              getCommitTime(),
+              finishedRoot.memoizedInteractions,
+            );
+          } else {
+            onRender(
+              finishedWork.memoizedProps.id,
+              current === null ? 'mount' : 'update',
+              finishedWork.actualDuration,
+              finishedWork.treeBaseDuration,
+              finishedWork.actualStartTime,
+              getCommitTime(),
+            );
+          }
+        }
+      }
+      return;
+    }
+    case SuspenseComponent: {
+      commitSuspenseHydrationCallbacks(finishedRoot, finishedWork);
+      return;
+    }
+    case SuspenseListComponent:
+    case IncompleteClassComponent:
+    case FundamentalComponent:
+    case ScopeComponent:
+      return;
+    default:
+      // warn
   }
 }
 
@@ -295,6 +439,35 @@ function hideOrUnhideAllChildren(finishedWork, isHidden) {
 }
 
 /**
+ * 添加ref
+ * @param {Fiber} finishedWork 
+ */
+export function commitAttachRef(finishedWork) {
+  const ref = finishedWork.ref;
+  if (ref !== null) {
+    const instance = finishedWork.stateNode;
+    let instanceToUse;
+    switch (finishedWork.tag) {
+      case HostComponent:
+        instanceToUse = getPublicInstance(instance);
+        break;
+      default:
+        instanceToUse = instance;
+    }
+
+    // 移动到外部以确保DCE使用此标志
+    if (enableScopeAPI && finishedWork.tag === ScopeComponent) {
+      instanceToUse = instance.methods;
+    }
+    if (typeof ref === 'function') {
+      ref(instanceToUse);
+    } else {
+      ref.current = instanceToUse;
+    }
+  }
+}
+
+/**
  * ref
  * @param {Fiber} current 
  */
@@ -311,6 +484,7 @@ export function commitDetachRef(current) {
 
 /**
  * 用户发起的错误（生命周期和refs）不应中断删除，因此不要让它们抛出。主机发起的错误应该会中断删除，所以没关系
+ * 函数类型的组件，执行effect的销毁函数、class组件卸载ref，然后执行willUnmount钩子
  * @param {FiberRoot} finishedRoot 
  * @param {Fiber} current 
  * @param {RenderPriorityLevel} renderPriorityLevel 
@@ -352,6 +526,61 @@ function commitUnmount(finishedRoot, current, renderPriorityLevel) {
       if (typeof instance.componentWillUnmount === 'function') {
         safelyCallComponentWillUnmount(current, instance);
       }
+      return;
+    }
+    case HostComponent: {
+      if (enableFlareAPI) {
+        const dependencies = current.dependencies;
+
+        if (dependencies !== null) {
+          const respondersMap = dependencies.responders;
+          if (respondersMap !== null) {
+            const responderInstances = Array.from(respondersMap.values());
+            for (let i = 0, length = responderInstances.length; i < length; i++) {
+              const responderInstance = responderInstances[i];
+              unmountResponderInstance(responderInstance);
+            }
+            dependencies.responders = null;
+          }
+        }
+      }
+      safelyDetachRef(current);
+      return;
+    }
+    case HostPortal: {
+      if (supportsMutation) {
+        unmountHostComponents(finishedRoot, current, renderPriorityLevel);
+      } else if (supportsPersistence) {
+        // skip not react-dom
+      }
+      return;
+    }
+    case FundamentalComponent: {
+      if (enableFundamentalAPI) {
+        const fundamentalInstance = current.stateNode;
+        if (fundamentalInstance !== null) {
+          unmountFundamentalComponent(fundamentalInstance);
+          current.stateNode = null;
+        }
+      }
+      return;
+    }
+    case DehydratedFragment: {
+      if (enableSuspenseCallback) {
+        const hydrationCallbacks = finishedRoot.hydrationCallbacks;
+        if (hydrationCallbacks !== null) {
+          const onDeleted = hydrationCallbacks.onDeleted;
+          if (onDeleted) {
+            onDeleted(current.stateNode);
+          }
+        }
+      }
+      return;
+    }
+    case ScopeComponent: {
+      if (enableScopeAPI) {
+        safelyDetachRef(current);
+      }
     }
   }
 }
@@ -368,8 +597,75 @@ function commitNestedUnmounts(finishedRoot, root, renderPriorityLevel) {
   // 因此，在节点内，执行一次内部循环
   let node = root;
   while (true) {
+    commitUnmount(finishedRoot, node, renderPriorityLevel);
+    // 访问子节点，因为它们可能包含更多的复合节点或宿主节点。
+    // 跳过portals，因为commitUnmount()当前递归访问它们。
+    if (
+      node.child !== null &&
+      // 如果启用supportsMutation上面进行了commitUnmount，如果没有启用，这里执行
+      (!supportsMutation || node.tag !== HostPortal)
+    ) {
+      node.child.return = node;
+      node = node.child;
+      continue;
+    }
+    if (node === root) {
+      return;
+    }
+    // 如果已经访问到最后一个子节点
+    while (node.sibling === null) {
+      if (node.return === null || node.return === root) {
+        return;
+      }
+      // 切换回父节点
+      node = node.return;
+    }
 
+    // 子节点访问完之后，切换到自己的兄弟节点
+    node.sibling.return = node.return;
+    node = node.sibling;
   }
+}
+
+
+/**
+ * 清空fiber
+ * @param {Fiber} current 
+ */
+function detachFiber(current) {
+  const alternate = current.alternate;
+  // Cut off the return pointers to disconnect it from the tree. Ideally, we
+  // should clear the child pointer of the parent alternate to let this
+  // get GC:ed but we don't know which for sure which parent is the current
+  // one so we'll settle for GC:ing the subtree of this child. This child
+  // itself will be GC:ed when the parent updates the next time.
+  current.return = null;
+  current.child = null;
+  current.memoizedState = null;
+  current.updateQueue = null;
+  current.dependencies = null;
+  current.alternate = null;
+  current.firstEffect = null;
+  current.lastEffect = null;
+  current.pendingProps = null;
+  current.memoizedProps = null;
+  if (alternate !== null) {
+    detachFiber(alternate);
+  }
+}
+
+/**
+ * 使Portal容器为空
+ * @param {Fiber} current 
+ */
+function emptyPortalContainer(current) {
+  if (!supportsPersistence) {
+    return;
+  }
+  const portal = current.stateNode;
+  const { containerInfo } = portal;
+  // react-native-renderer
+  const emptyChildSet = createContainerChildSet(containerInfo);
 }
 
 
@@ -616,9 +912,76 @@ function unmountHostComponents(finishedRoot, current, renderPriorityLevel) {
       currentParentIsValid = true;
     }
 
-    if (node.tag === HostComponent || node.tag === HostText) {
-      commitNestedUnmounts()
+    if (node.tag === HostComponent || node.tag === HostText) { // 如果当前节点是一个dom节点
+      commitNestedUnmounts(finishedRoot, node, renderPriorityLevel);
+      // 在所有子节点都卸载之后，现在可以安全地从树中删除节点。
+      if (currentParentIsContainer) {
+        removeChildFromContainer(currentParent, node.stateNode);
+      } else {
+        removeChild(currentParent, node.stateNode);
+      }
+      // 子节点已经遍历，无需再次遍历
+    } else if (enableFundamentalAPI && node.tag === FundamentalComponent) {
+      const fundamentalNode = node.stateNode.instance;
+      commitNestedUnmounts(finishedRoot, node, renderPriorityLevel);
+      if (currentParentIsContainer) {
+        removeChildFromContainer(currentParent, fundamentalNode);
+      } else {
+        removeChild(currentParent, fundamentalNode);
+      }
+    } else if (enableSuspenseServerRenderer && node.tag === DehydratedFragment) {
+      if (enableSuspenseCallback) {
+        const hydrationCallbacks = finishedRoot.hydrationCallbacks;
+        if (hydrationCallbacks !== null) {
+          const onDeleted = hydrationCallbacks.onDeleted;
+          if (onDeleted) {
+            onDeleted(node.state);
+          }
+        }
+      }
+
+      if (currentParentIsContainer) {
+        clearSuspenseBoundaryFromContainer(currentParent, node.stateNode);
+      } else {
+        clearSuspenseBoundary(currentParent, node.stateNode);
+      }
+    } else if (node.tag === HostPortal) {
+      if (node.child !== null) {
+        // 当node为Portal时，它自身才是真实的parent
+        currentParent = node.stateNode.containerInfo;
+        currentParentIsContainer = true;
+
+        // Portal组件内部也会包含其他种类的组件
+        node.child.return = node;
+        node = node.child;
+        continue;
+      }
+    } else {
+      commitUnmount(finishedRoot, node, renderPriorityLevel);
+      if (node.child !== null) {
+        node.child.return = node;
+        node = node.child;
+        continue;
+      }
     }
+
+    if (node === current) {
+      return;
+    }
+
+    while (node.sibling === null) {
+      if (node.return === null || node.return === current) {
+        return;
+      }
+      node = node.return;
+      if (node.tag === HostPortal) {
+        // 因为node.tag === HostPortal的情况下，直接将currentParent = node.stateNode.containerInfo;
+        // 这里不重设currentParentIsValid为false的话，下一次循环开始时，currentParent会出错。
+        currentParentIsValid = false;
+      }
+    }
+    node.sibling.return = node.return;
+    node = node.sibling;
   }
 }
 
@@ -634,8 +997,9 @@ export function commitDeletion(finishedRoot, current, renderPriorityLevel) {
     // 分离引用并对整个子树调用componentWillUnmount（）。
     unmountHostComponents(finishedRoot, current, renderPriorityLevel);
   } else {
-
+    commitNestedUnmounts(finishedRoot, current, renderPriorityLevel);
   }
+  detachFiber(current);
 }
 
 /**
@@ -804,6 +1168,39 @@ function commitSuspenseComponent(finishedWork) {
       const thenables = finishedWork.updateQueue;
       if (thenables !== null) {
         suspenseCallback(new Set(thenables));
+      }
+    }
+  }
+}
+
+/**
+ * suspense 注水后的回调？？TODO:
+ * @param {FiberRoot} finishedRoot 
+ * @param {Fiber} finishedWork 
+ */
+function commitSuspenseHydrationCallbacks(finishedRoot, finishedWork) {
+  if (!supportsHydration) {
+    return;
+  }
+  const newState = finishedWork.memoizedState;
+  if (newState === null) {
+    const current = finishedWork.alternate;
+    if (current !== null) {
+      const prevState = current.memoizedState;
+      if (prevState !== null) {
+        const suspenseInstance = prevState.dehydrated;
+        if (suspenseInstance !== null) {
+          commitHydratedSuspenseInstance(suspenseInstance);
+          if (enableSuspenseCallback) {
+            const hydrationCallbacks = finishedRoot.hydrationCallbacks;
+            if (hydrationCallbacks !== null) {
+              onHydrated = hydrationCallbacks.onHydrated;
+              if (onHydrated) {
+                onHydrated(suspenseInstance);
+              }
+            }
+          }
+        }
       }
     }
   }

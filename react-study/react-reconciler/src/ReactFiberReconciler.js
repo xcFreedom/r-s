@@ -13,6 +13,7 @@ import {
   flushPassiveEffects,
 } from './ReactFiberScheduler';
 import { createUpdate, enqueueUpdate } from './ReactUpdateQueue';
+import { flushRoot } from './ReactFiberWorkLoop';
 
 /**
  * 

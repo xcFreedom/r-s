@@ -8,6 +8,7 @@ import {
   trapBubbledEvent,
 } from "./ReactDOMEventListener";
 import isEventSupported from './isEventSupported';
+import { registrationNameDependencies } from "react-study/legacy-events/EventPluginRegistry";
 
 /**
  *  - 顶层事件委托用于捕获大多数原生的浏览器事件。这可能只会发生在主线程中，由ReactDOMEventListener负责，事件是被注入的形式，所以支持扩展。这是在主线程中发生的唯一工作。
@@ -59,6 +60,11 @@ import isEventSupported from './isEventSupported';
 const PossiblyWeakMap = typeof WeakMap === 'function' ? WeakMap : Map;
 const elementListeningSets = new PossiblyWeakMap();
 
+/**
+ * 从elementListening映射中，获取元素对应的listener集合
+ * @param {Element} element 
+ * @returns {Set}
+ */
 export function getListeningSetForElement(element) {
   let listeningSet = elementListeningSets.get(element);
   if (listeningSet === undefined) {
@@ -66,6 +72,22 @@ export function getListeningSetForElement(element) {
     elementListeningSets.set(element, listeningSet);
   }
   return listeningSet;
+}
+
+/**
+ * 我们监听文档对象上的冒泡触摸事件
+ * @see http://www.quirksmode.org/blog/archives/2010/09/click_event_del.html
+ * @param {string} registrationName 
+ * @param {Element | Document | Node} mountAt 
+ */
+export function listenTo(registrationName, mountAt) {
+  const listeningSet = getListeningSetForElement(mountAt);
+  const dependencies = registrationNameDependencies[registrationName];
+
+  for (let i = 0; i < dependencies.length; i++) {
+    const dependency = dependencies[i];
+    listenToTopLevel(dependency, mountAt, listeningSet);
+  }
 }
 
 export function listenToTopLevel(topLevelType, mountAt, listeningSet) {

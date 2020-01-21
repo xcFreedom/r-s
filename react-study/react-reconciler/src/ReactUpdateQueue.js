@@ -202,3 +202,89 @@ export function enqueueUpdate(fiber, update) {
   }
 
 }
+
+/**
+ * 添加到捕获更新队列，捕获的更新进入一个单独的列表，并且仅在workInProgress队列中
+ * @param {Fiber} workInProgress 
+ * @param {Update} update 
+ */
+export function enqueueCapturedUpdate(workInProgress, update) {
+  let workInProgressQueue = workInProgress.updateQueue;
+  if (workInProgressQueue === null) {
+    workInProgressQueue = workInProgress.updateQueue = createUpdateQueue(workInProgress.memoizedState);
+  } else {
+    workInProgressQueue = ensureWorkInProgressQueueIsAClone(workInProgress, workInProgressQueue);
+  }
+
+  // 把Update添加到末尾
+  if (workInProgressQueue.lastCapturedUpdate === null) {
+    workInProgressQueue.firstCapturedUpdate = workInProgressQueue.lastCapturedUpdate = update;
+  } else {
+    workInProgressQueue.lastCapturedUpdate.next = update;
+    workInProgressQueue.lastCapturedUpdate = update;
+  }
+}
+
+/**
+ * 确保workInProgress队列和current的updateQueue不是同一个对象，如果是则clone一份
+ * @param {Fiber} workInProgress 
+ * @param {UpdateQueeu} queue 
+ */
+function ensureWorkInProgressQueueIsAClone(workInProgress, queue) {
+  const current = workInProgress.alternate;
+  if (current !== null) {
+    if (queue === current.updateQueue) {
+      queue = workInProgress.updateQueue = cloneUpdateQueue(queue);
+    }
+  }
+
+  return queue;
+}
+
+function callCallback(callback, context) {
+  callback.call(context);
+}
+
+/**
+ * 提交更新队列
+ * TODO: 暂时还没看到firstCapturedUpdate、firstCapturedEffect添加的代码
+ * @param {Fiber} finishedWork 
+ * @param {UpdateQueue} finishedQueue 
+ * @param {any} instance 
+ * @param {ExpirationTime} renderExpirationTime 
+ */
+export function commitUpdateQueue(finishedWork, finishedQueue, instance, renderExpirationTime) {
+  // 如果完成的render包含捕获的update，并且仍然存在低优先级的更新。
+  // 我们需要保持这些update在队列中，在低优先级再次处理队列时调整他们，而不是丢掉，
+  if (finishedQueue.firstCapturedUpdate !== null) {
+    // 将捕获的更新列表加入到普通列表的末尾。
+    if (finishedQueue.lastUpdate !== null) {
+      // TODO:????怎么感觉这里lastUpdate被丢掉了。。
+      finishedQueue.lastUpdate.next = finishedQueue.firstCapturedUpdate;
+      finishedQueue.lastUpdate = finishedQueue.lastCapturedUpdate;
+    }
+    finishedQueue.firstCapturedUpdate = finishedQueue.lastCapturedUpdate = null;
+  }
+
+  commitUpdateEffects(finishedQueue.firstEffect, instance);
+  finishedQueue.firstEffect = finishedQueue.lastEffect = null;
+
+  commitUpdateEffects(finishedQueue.firstCapturedEffect, instance);
+  finishedQueue.firstCapturedEffect = finishedQueue.lastCapturedEffect = null;
+}
+
+/**
+ * TODO: wtf
+ * @param {Update} effect 
+ * @param {any} instance 
+ */
+function commitUpdateEffects(effect, instance) {
+  while (effect !== null) {
+    const callback = effect.callback;
+    if (callback !== null) {
+      effect.callback = null;
+      callCallback(callback, instance);
+    }
+    effect = effect.nextEffect;
+  }
+}

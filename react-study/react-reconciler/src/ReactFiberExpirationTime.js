@@ -1,4 +1,5 @@
 import MAX_SIGNED_31_BIT_INT from './maxSigned31BitInt';
+import { ImmediatePriority, IdlePriotity, UserBlockingPriority, NormalPriority } from './SchedulerWithReactIntegration';
 
 export const NoWork = 0;
 export const Never  = 1;
@@ -10,12 +11,18 @@ export const Batched = Sync - 1;
 const UNIT_SIZE = 10;
 const MAGIC_NUMBER_OFFSET = MAX_SIGNED_31_BIT_INT - 1;
 
+// 1个到期时间单位表示10毫秒。
 export function msToExpirationTime(ms) {
+  // 总是加一个偏移量，这样我们就不会和现在的MAGIC_NUMBER_OFFSET冲突。
   return MAGIC_NUMBER_OFFSET - ((ms / UNIT_SIZE) | 0);
 }
 
+export function expirationTimeToMs(expirationTime) {
+  return (MAGIC_NUMBER_OFFSET - expirationTime) * UNIT_SIZE;
+}
+
 /**
- * 
+ * （num / precision取整）* precision + precision
  * @param {Number} num 
  * @param {Number} precision 
  * @returns {Number}
@@ -39,7 +46,12 @@ function computeExpirationBucket(currentTime, expirationInMs, bucketSizeMs) {
 export const LOW_PRIORITY_EXPIRATION = 5000;
 export const LOW_PRIORITY_BATCH_SIZE = 250;
 
+/**
+ * 计算异步的expirationTime
+ * @param {ExpirationTime} currentTime 
+ */
 export function computeAsyncExpiration(currentTime) {
+  // MAGIC_NUMBER_OFFSET - ceiling(MAGIC_NUMBER_OFFSET - currentTime + 500, 25);
   return computeExpirationBucket(currentTime, LOW_PRIORITY_EXPIRATION, LOW_PRIORITY_BATCH_SIZE);
 }
 
@@ -66,5 +78,39 @@ export const HIGH_PRIORITY_BATCH_SIZE = 100;
  * @returns {ExpirationTime}
  */
 export function computeInteractiveExpiration(currentTime) {
+  // MAGIC_NUMBER_OFFSET - ceiling(MAGIC_NUMBER_OFFSET - currentTime + 15, 10);
   return computeExpirationBucket(currentTime, HIGH_PRIORITY_EXPIRATION, HIGH_PRIORITY_BATCH_SIZE);
+}
+
+
+/**
+ * 从expirationTime获取内部优先级
+ * @param {ExpirationTime} currentTime 
+ * @param {ExpirationTime} expirationTime 
+ * @returns {ReactPriorityLevel}
+ */
+export function interPriorityFromExpirationTime(currentTime, expirationTime) {
+  if (expirationTime === Sync) { // Sync模式返回最高优先级
+    return ImmediatePriority;
+  }
+  if (expirationTime === Never || expirationTime == Idle) {
+    return IdlePriotity;
+  }
+
+  const msUntil = expirationTimeToMs(expirationTime) - expirationTimeToMs(currentTime);
+
+  // 如果expirationTime小于currentTime
+  if (msUntil <= 0) {
+    return ImmediatePriority;
+  }
+
+  if (msUntil <= HIGH_PRIORITY_EXPIRATION + HIGH_PRIORITY_BATCH_SIZE) {
+    return UserBlockingPriority;
+  }
+
+  if (msUntil <= LOW_PRIORITY_EXPIRATION + LOW_PRIORITY_BATCH_SIZE) {
+    return NormalPriority;
+  }
+
+  return IdlePriotity;
 }

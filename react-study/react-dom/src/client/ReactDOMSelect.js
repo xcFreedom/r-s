@@ -1,5 +1,22 @@
 import { toString, getToStringValue } from "./ToStringValue";
 
+export function getHostProps(element, props) {
+  return Object.assign({}, props, { value: undefined });
+}
+
+/**
+ * 为select组件添加_wrapperState，标记select初始是否多选
+ * @param {Element} element 
+ * @param {Props} props 
+ */
+export function initWrapperState(element, props) {
+  const node = element;
+
+  node._wrapperState = {
+    wasMultiple: !!props.multiple,
+  };
+}
+
 function updateOptions(node, multiple, propValue, setDefaultSelected) {
   const options = node.options;
   if (multiple) {
@@ -36,6 +53,17 @@ function updateOptions(node, multiple, propValue, setDefaultSelected) {
     if (defaultSelected !== null) {
       defaultSelected.selected = true;
     }
+  }
+}
+
+export function postMountWrapper(element, props) {
+  const node = element;
+  node.multiple = !!props.multiple;
+  const value = props.value;
+  if (value != null) {
+    updateOptions(node, !!props.multiple, value, false);
+  } else if (props.defaultValue != null) {
+    updateOptions(node, !!props.multiple, props.defaultValue, true);
   }
 }
 

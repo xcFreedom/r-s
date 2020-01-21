@@ -11,6 +11,7 @@ const {
   unstable_runWithPriority: Scheduler_runWithPriority,
   unstable_cancelCallback: Scheduler_cancelCallback,
   unstable_getCurrentPriorityLevel: Scheduler_getCurrentPriorityLevel,
+  unstable_requestPaint: Scheduler_requestPaint,
 } = Scheduler;
 
 const fakeCallbackNode = {};
@@ -24,12 +25,16 @@ export const IdlePriotity = 95;
 
 export const NoPriority = 90;
 
+// export const shouldYield = null;
+export const requestPaint = Scheduler_requestPaint !== undefined ? Scheduler_requestPaint : () => {};
+
 
 let syncQueue = null;
 let immediateQueueCallbackNode = null;
 let isFlushingSyncQueue = false;
 let initialTimeMs = Scheduler_now();
 
+// 约等于scheduler - getCurrentTime()，大致为页面打开了多久
 export const now = initialTimeMs < 10000 ? Scheduler_now : () => Scheduler_now() - initialTimeMs;
 
 export function getCurrentPriorityLevel() {
@@ -71,6 +76,14 @@ export function runWithPriority(reactPriorityLevel, fn) {
   return Scheduler_runWithPriority(priorityLevel, fn);
 }
 
+/**
+ * 安排回调
+ * - 步骤一：根据reactPriorityLevel换算schedulerPriority
+ * - 步骤二：调用Scheduler_scheduleCallback传入参数
+ * @param {ReactPriorityLevel} reactPriorityLevel 
+ * @param {Function} callback 
+ * @param {{ timeout?: number }} options 
+ */
 export function scheduleCallback(reactPriorityLevel, callback, options) {
   const priorityLevel = reactPriorityToSchedulerPriority(reactPriorityLevel);
   return Scheduler_scheduleCallback(priorityLevel, callback, options);
@@ -96,6 +109,21 @@ export function scheduleSyncCallback(callback) {
   return fakeCallbackNode;
 }
 
+/**
+ * 取消安排的回调，如果是Sync模式，无法取消
+ * @param {Function} callbackNode 
+ */
+export function cancelCallback(callbackNode) {
+  if (callbackNode !== fakeCallbackNode) {
+    Scheduler_cancelCallback(callbackNode);
+  }
+}
+
+/**
+ * 刷洗同步回调队列
+ * - 如果存在Immdiate优先级的任务已经被调度，清空它的回调
+ * - 因为我们要同步执行syncQueue里面的回调，不需要调度程序安排
+ */
 export function flushSyncCallbackQueue() {
   if (immediateQueueCallbackNode !== null) {
     const node = immediateQueueCallbackNode;
@@ -105,6 +133,12 @@ export function flushSyncCallbackQueue() {
   flushSyncCallbackQueueImpl();
 }
 
+/**
+ * 冲洗同步回调队列
+ * - 如果当前没有冲洗正在进行，且存在syncQueue
+ * - 将scheduler内部的current优先级标记为最高优先级，然后执行syncQueue里面的任务
+ * - 如果遍历中途出错了，则需要调度程序安排下一次高优先级的任务重启
+ */
 function flushSyncCallbackQueueImpl() {
   if (!isFlushingSyncQueue && syncQueue !== null) {
     isFlushingSyncQueue = true;

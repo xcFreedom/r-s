@@ -10,24 +10,51 @@ import { NoPriority } from './SchedulerWithReactIntegration'
 
 
 function FiberRootNode(containerInfo, tag, hydrate) {
-  this.tag = tag;
+  // 根的类型（legacy、batched、concurrent），对应的分别是ReactDOM.render、ReactDOM.createSyncRoot、ReactDOM.createRoot
+  this.tag = tag; 
+
+  // FiberRoot对应的Fiber，也称之为RootFiber，是整个fiber树的根节点
   this.current = null;
-  this.containerInfo = containerInfo;
-  this.pendingChildren = null;
-  this.pingCache = null;
-  this.finishedExpirationTime = NoWork;
-  this.finishedWork = null;
-  this.timeoutHandle = noTimeout;
-  this.context = nul;
-  this.pendingContext = null;
-  this.hydrate = hydrate;
-  this.callbackNode = null;
-  this.callbackPriority = NoPriority;
-  this.firstPendingTime = NoWork;
-  this.firstSuspendedTime = NoWork;
   
+  // 和fiberRoot关联的host节点信息
+  this.containerInfo = containerInfo;
+
+  // 仅由持久更新使用，暂时还未看到
+  this.pendingChildren = null;
+
+  // Map，主要记录的是Suspense组件使用时，throw的promise，与其expirationTime的映射
+  this.pingCache = null;
+  // 这应该标记的是root完成工作的expirationTime
+  this.finishedExpirationTime = NoWork;
+  // 已经完成的workInProgress HostRoot，它准备进入commit阶段
+  this.finishedWork = null;
+  // 在任务被挂起时，通过setTimeout设置的返回内容，下一次如果有新的任务挂起时清理还没触发的timeout
+  this.timeoutHandle = noTimeout;
+  // 顶层contex对象，使用renderSubtreeIntoContainer会产生
+  this.context = null;
+  this.pendingContext = null;
+
+  // 确定是否应该在初始安装时进行注水
+  this.hydrate = hydrate;
+  // Scheduler.scheduleCallback返回的节点
+  this.callbackNode = null;
+  // 与此root关联的回调优先级
+  this.callbackPriority = NoPriority;
+
+  // 如此多的expirationTime，应该是用来区分
+  // 1) 没有commit的任务                 
+  // 2) 没有commit的挂起任务              suspendedTime
+  // 3) 没有commit的可能被挂起的任务        pendingTime，所有任务进来一开始都是这个状态
+
+  // root中存在的最早挂起的到期时间
+  this.firstPendingTime = NoWork;
+  // root中存在的最早暂停的expirationTime
+  this.firstSuspendedTime = NoWork;
+  // root中存在的最晚暂停的expirationTime
   this.lastSuspendedTime = NoWork;
+  // 挂起后下一个已知的expirationTime
   this.nextKnownPendingLevel = NoWork;
+  // Suspense组件通知root重新渲染的最晚expirationTime
   this.lastPingedTime = NoWork;
   this.lastExpiredTime = NoWork;
 
@@ -62,16 +89,36 @@ export function createFiberRoot(containerInfo, tag, hydrate, hydrationCallbacks)
 }
 
 /**
- * 标记root延迟的时间
+ * 判断root这某个时间是否是挂起的，如果有挂起时间，且第一个暂停时间优先级大于等于传入的时间，且最后一个暂停时间优先级小于等于传入的时间
+ * 则表明，传入的时间，root在暂停状态
+ * @param {FiberRoot} root 
+ * @param {ExpirationTime} expirationTime 
+ * @returns {boolean}
+ */
+export function isRootSuspendedAtTime(root, expirationTime) {
+  const firstSuspendedTime = root.firstSuspendedTime;
+  const lastSuspendedTime = root.lastSuspendedTime;
+  return (
+    firstSuspendedTime !== NoWork &&
+    (firstSuspendedTime >= expirationTime &&
+      lastSuspendedTime <= expirationTime)
+  );
+}
+
+/**
+ * 标记root挂起的时间
+ * 
  * @param {FiberRoot} root 
  * @param {ExpirationTime} expirationTime 
  */
 export function markRootSuspendedAtTime(root, expirationTime) {
   const firstSuspendedTime = root.firstSuspendedTime;
   const lastSuspendedTime = root.lastSuspendedTime;
+  // 如果第一次挂起的优先级小于当前传入的优先级
   if (firstSuspendedTime < expirationTime) {
     root.firstSuspendedTime = expirationTime;
   }
+  // 如果最后挂起的优先级大于
   if (lastSuspendedTime > expirationTime || firstSuspendedTime === NoWork) {
     root.lastSuspendedTime = expirationTime;
   }
@@ -82,12 +129,12 @@ export function markRootSuspendedAtTime(root, expirationTime) {
 }
 
 /**
- * 标记root已更新的时间
+ * 标记root上的pendingTime、suspendedTime、nextKnownPendingLevel
  * @param {FiberRoot} root 
  * @param {ExpirationTime} expirationTime 
  */
 export function markRootUpdatedAtTime(root, expirationTime) {
-  // 更新等待时间范围
+  // 如果当前传入的expirationTime优先级更高，应将此优先级置于firstPendingTime
   const firstPendingTime = root.firstPendingTime;
   if (expirationTime > firstPendingTime) {
     root.firstPendingTime = expirationTime;
@@ -96,6 +143,8 @@ export function markRootUpdatedAtTime(root, expirationTime) {
   // 更新挂起时间的范围。将优先级较低或等于此更新的所有内容都视为未挂起。
   const firstSuspendedTime = root.firstSuspendedTime;
   if (firstSuspendedTime !== NoWork) {
+    // 如果此优先级比firstSuspendedTime更高，则清空下面的expirationTime
+    // TODO:暂时没明白
     if (expirationTime >= firstSuspendedTime) {
       root.firstSuspendedTime = root.lastSuspendedTime = root.nextKnownPendingLevel = NoWork;
     } else if (expirationTime >= root.lastSuspendedTime) {

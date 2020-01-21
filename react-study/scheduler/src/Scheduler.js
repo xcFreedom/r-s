@@ -6,11 +6,24 @@ import {
   IdlePriority,
 } from './SchedulerPriorities';
 import {
-  getCurrentTime, cancelHostTimeout, requestHostTimeout, requestHostCallback, shouldYieldToHost,
+  getCurrentTime,
+  cancelHostTimeout,
+  requestHostTimeout,
+  requestHostCallback,
+  shouldYieldToHost,
+  requestPaint,
 } from './SchedulerHostConfig';
 import { enableProfiling, enableSchedulerDebugging } from './SchedulerFeatureFlags';
 import { push, peek } from './SchedulerMinHeap';
-import { markSchedulerUnsuspended, markTaskErrored, markTaskRun, markTaskYield, markTaskComplete, markSchedulerSuspended, markTaskCanceled } from './SchedulerProfiling';
+import {
+  markSchedulerUnsuspended,
+  markTaskErrored,
+  markTaskRun,
+  markTaskYield,
+  markTaskComplete,
+  markSchedulerSuspended,
+  markTaskCanceled,
+} from './SchedulerProfiling';
 
 const maxSigned31BitInt = 1073741823
 
@@ -191,6 +204,28 @@ function unstable_runWithPriority(priorityLevel, eventHandler) {
   }
 }
 
+function unstable_next(eventHandler) {
+  var priorityLevel;
+  switch (currentPriorityLevel) {
+    case ImmediatePriority:
+    case UserBlockingPriority:
+    case NormalPriority:
+      priorityLevel = NormalPriority;
+      break;
+    default:
+      priorityLevel = currentPriorityLevel;
+      break;
+  }
+
+  var previousPriorityLevel = currentPriorityLevel;
+  currentPriorityLevel = priorityLevel;
+  try {
+    return eventHandler();
+  } finally {
+    currentPriorityLevel = previousPriorityLevel;
+  }
+}
+
 function timeoutForPriorityLevel(priorityLevel) {
   switch (priorityLevel) {
     case ImmediatePriority:
@@ -207,11 +242,21 @@ function timeoutForPriorityLevel(priorityLevel) {
   }
 }
 
+/**
+ * 安排回调
+ * @param {*} priorityLevel 
+ * @param {*} callback 
+ * @param {*} options 
+ */
 function unstable_scheduleCallback(priorityLevel, callback, options) {
+  // 获取当前网页运行时间
   let currentTime = getCurrentTime();
 
+  // 计算开始时间与过期时间
   let startTime;
   let timeout;
+  // 如果存在options.delay，startTime为currentTime + delay，否则为currentTime
+  // timeout为options.timeout || timeoutForPriorityLevel
   if (typeof options === 'object' && options !== null) {
     let delay = options.delay;
     if (typeof delay === 'number' && delay > 0) {
@@ -225,7 +270,9 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
     start = currentTime;
   }
 
+  // 过期时间为开始时间+超时时间
   let expirationTime = startTime + timeout;
+  // 创建新任务
   const newTask = {
     id: taskIdCounter++,
     callback,
@@ -237,6 +284,7 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
   if (enableProfiling) {
     newTask.isQueued = false;
   }
+  // 如果开始时间大于当前时间，表明任务现在无须进行
   if (startTime > currentTime) {
     newTask.sortIndex = startTime;
     push(timerQueue, newTask);
@@ -285,6 +333,7 @@ function unstable_getCurrentPriorityLevel() {
   return currentPriorityLevel;
 }
 
+const unstable_requestPaint = requestPaint;
 
 export {
   ImmediatePriority as unstable_ImmediatePriority,
@@ -297,4 +346,6 @@ export {
   unstable_cancelCallback,
   unstable_getCurrentPriorityLevel,
   getCurrentTime as unstable_now,
+  unstable_requestPaint,
+  unstable_next,
 };

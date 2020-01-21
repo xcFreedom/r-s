@@ -2,6 +2,46 @@ import { setValueForProperty } from "./DOMPropertyOperations";
 import { getToStringValue, toString } from "./ToStringValue";
 import { disableInputAttributeSyncing } from "react-study/shared/ReactFeatureFlags";
 
+function isContolled(props) {
+  const usesChecked = props.type === 'checkbox' || props.type === 'radio';
+  return usesChecked ? props.checked != null : props.value != null;
+}
+
+/**
+ * 获取input元素的宿主props，就是增添一些默认的属性
+ * @param {Element} element 
+ * @param {Props} props 
+ */
+export function getHostProps(element, props) {
+  const node = element;
+  const checked = props.checked;
+
+  const hostProps = Object.assing({}, props, {
+    defaultChecked: undefined,
+    defaultValue: undefined,
+    value: undefined,
+    checked: checked != null ? checked : node._wrapperState.initialChecked,
+  });
+  
+  return hostProps;
+}
+
+/**
+ * 为Element添加wrapperState属性，标记input的初始value，和是否为受控组件
+ * @param {Element} element 
+ * @param {Props} props 
+ */
+export function initWrapperState(element, props) {
+  const node = element;
+  const defaultValue = props.defaultValue == null ? '' : props.defaultValue;
+
+  node._wrapperState = {
+    initialChecked: props.checked != null ? props.checked : props.defaultChecked,
+    initialValue: getToStringValue(props.value != null ? props.value : defaultValue),
+    controlled: isContolled(props),
+  }
+}
+
 export function updateChecked(element, props) {
   const node = element;
   const checked = props.checked;
@@ -67,6 +107,55 @@ export function updateWrapper(element, props) {
     if (props.checked == null && props.defaultChecked != null) {
       node.defaultChecked = !!props.defaultChecked;
     }
+  }
+}
+
+/**
+ * // TODO:有点不太懂
+ * @param {Element} element 
+ * @param {Object} props 
+ * @param {boolean} isHydrating 
+ */
+export function postMountWrapper(element, props, isHydrating) {
+  const node = element;
+  // 如果已设置值，则不要分配该值。
+  // 这可以防止用户文本输入在SSR hydration过程中丢失
+  if (props.hasOwnProperty('value') || props.hasOwnProperty('defaultValue')) {
+    const type = props.type;
+    const isButton = type === 'submit' || type === 'react';
+
+    // 避免在submit/reset button上设置属性，因为它会覆盖浏览器提供的默认值
+    if (isButton && (props.value === undefined || props.value === null)) {
+      return;
+    }
+
+    const initialValue = toString(node._wrapperState.initialValue);
+
+    // 如果已设置值，则不要分配该值。
+    // 这可以防止用户文本输入在SSR hydration过程中丢失
+    if (!isHydrating) {
+      if (disableInputAttributeSyncing) {
+        // 暂时忽略
+      } else {
+        if (initialValue !== node.value) {
+          node.value = initialValue;
+        }
+      }
+
+      node.defaultValue = initialValue;
+    }
+  }
+
+  // checkbox的name属性，有时设置defaultChecked会影响checked的值
+  const name = node.name;
+  if (name !== '') {
+    node.name = '';
+  }
+  node.defaultChecked = !node.defaultChecked;
+  node.defaultChecked = !!node._wrapperState.initialChecked;
+
+  if (name !== '') {
+    node.name = name;
   }
 }
 

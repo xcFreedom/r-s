@@ -26,7 +26,16 @@ function pop(cursor, fiber) {
   index--;
 }
 
+function push(cursor, value, fiber) {
+  index++;
+
+  valueStack[index] = cursor.current;
+
+  cursor.current = value;
+}
+
 export {
   createCursor,
-  pop
+  pop,
+  push
 };

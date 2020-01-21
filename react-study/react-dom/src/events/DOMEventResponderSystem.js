@@ -180,6 +180,36 @@ export function mountEventResponder(responder, responderInstance, props, state) 
   }
 }
 
+export function unmountEventResponder(responderInstance) {
+  const responder = responderInstance.responder;
+  const onUnmount = responder.onUnmount;
+  if (onUnmount !== null) {
+    let { props, state } = responderInstance;
+    const previousInstance = currentInstance;
+    currentInstance = responderInstance;
+    try {
+      batchedEventUpdates(() => {
+        onUnmount(eventResponderContext, props, state);
+      });
+    } finally {
+      currentInstance = previousInstance;
+    }
+  }
+
+  const rootEventTypsSet = responderInstance.rootEventTypes;
+  if (rootEventTypsSet !== null) {
+    const rootEventTypes = Array.from(rootEventTypsSet);
+
+    for (let i = 0; i < rootEventTypes.length; i++) {
+      const topLevelEventType = rootEventTypes[i];
+      let rootEventResponderInstances = rootEventTypesToEventResponderInstances.get(topLevelEventType);
+      if (rootEventResponderInstances !== undefined) {
+        rootEventResponderInstances.delete(responderInstance);
+      }
+    }
+  }
+}
+
 function validateResponderContext() {
   // invariant(currentInstance !== null, '.....);
 }

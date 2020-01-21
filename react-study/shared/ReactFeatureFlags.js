@@ -1,6 +1,6 @@
-export const enableUserTimingAPI = __DEV__;
+export const enableUserTimingAPI = false;
 // 收集Profiler子树的高级计时指标。
-export const enableProfilerTimer = __DEV__; // 不考虑开发模式NODE_ENV === 'development';
+export const enableProfilerTimer = false; // 不考虑开发模式NODE_ENV === 'development';
 
 // 跟踪哪些交互触发每个提交
 export const enableSchedulerTracing = true; // __PROFILE__;
@@ -25,3 +25,7 @@ export const disableInputAttributeSyncing = false;
 
 // Experimental Scope support.
 export const enableScopeAPI = false;
+
+export const disableSchedulerTimeoutBasedOnReactExpirationTime = false;
+
+export const disableLegacyContext = false;
