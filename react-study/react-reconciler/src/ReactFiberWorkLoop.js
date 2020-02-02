@@ -5,7 +5,19 @@ import {
   markRootFinishedAtTime,
   isRootSuspendedAtTime,
 } from "./ReactFiberRoot";
-import { NoWork, Sync, msToExpirationTime, computeSuspenseExpiration, LOW_PRIORITY_EXPIRATION, computeInteractiveExpiration, Idle, Batched, Never, interPriorityFromExpirationTime, expirationTimeToMs } from "./ReactFiberExpirationTime";
+import {
+  NoWork,
+  Sync,
+  msToExpirationTime,
+  computeSuspenseExpiration,
+  LOW_PRIORITY_EXPIRATION,
+  computeInteractiveExpiration,
+  Idle,
+  Batched,
+  Never,
+  interPriorityFromExpirationTime,
+  expirationTimeToMs,
+} from "./ReactFiberExpirationTime";
 import {
   scheduleSyncCallback,
   getCurrentPriorityLevel,

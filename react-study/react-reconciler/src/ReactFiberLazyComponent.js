@@ -1,3 +1,8 @@
+/**
+ * 合并props与defaultProps
+ * @param {Function} Component 
+ * @param {Object} baseProps 
+ */
 export function resolveDefaultProps(Component, baseProps) {
   if (Component && Component.defaultProps) {
     const props = Object.assign({}, baseProps);

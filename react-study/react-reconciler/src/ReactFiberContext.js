@@ -37,7 +37,7 @@ export function pushTopLevelContextObject(fiber, context, didChange) {
 }
 
 /**
- * 
+ * 拿到当前context
  * @param {Fiber} workInProgress 
  * @param {Function} Component 
  * @param {boolean} didPushOwnContextIfProvider 
@@ -57,6 +57,8 @@ export function getUnmaskedContext(workInProgress, Component, didPushOwnContextI
 
 /**
  * 缓存context
+ * - 将全局context存入实例的__reactInternalMemoizedUnmaskedChildContext上
+ * - 将组件可用的context存入实例的__reactInternalMemoizedMaskedChildContext上
  * @param {Fiber} workInProgress 
  * @param {Object} unmaskedContext 
  * @param {Object} maskedContext 
@@ -72,7 +74,7 @@ function cacheContext(workInProgress, unmaskedContext, maskedContext) {
 }
 
 /**
- * 
+ * 获取当前fiber应该持有的context
  * @param {Fiber} workInProgress 
  * @param {Object} unmaskedContext 
  */
@@ -82,6 +84,7 @@ export function getMaskedContext(workInProgress, unmaskedContext) {
   } else {
     const type = workInProgress.type;
     const contextTypes = type.contextTypes;
+    // 如果组件上没有定义contextTypes，返回空的
     if (!contextTypes) {
       return emptyContextObject;
     }
@@ -95,6 +98,7 @@ export function getMaskedContext(workInProgress, unmaskedContext) {
     }
 
     const context = {};
+    // 当context发生改变时，遍历contextTypes，获取组件应该得到的context
     for (let key in contextTypes) {
       context[key] = unmaskedContext[key];
     }

@@ -21,6 +21,23 @@ import { isDevToolsPersent } from './ReactFiberDevToolsHook';
 
 /**
  * 
+ *  export type Dependencies = {
+      expirationTime: ExpirationTime,
+      firstContext: ContextDependency<mixed> | null,
+      responders: Map<
+        ReactEventResponder<any, any>,
+        ReactEventResponderInstance<any, any>,
+      > | null,
+    };
+
+    export type ContextDependency<T> = {
+      context: ReactContext<T>,
+      observedBits: number,
+      next: ContextDependency<mixed> | null,
+    };
+ */
+/**
+ * 
  * @param {WorkTag} tag 
  * @param {mixed} pendingProps 
  * @param {null | string} key 

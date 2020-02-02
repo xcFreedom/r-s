@@ -30,8 +30,29 @@ import { markUnprocessedUpdateTime } from './ReactFiberWorkLoop';
 import { cloneChildFibers } from './ReactChildFiber';
 import { Placement, PerformedWork } from 'react-study/shared/ReactSideEffectTags';
 import { renderWithHooks } from './ReactFiberHooks';
+import { resolveDefaultProps } from './ReactFiberLazyComponent';
 
 let didReceiveUpdate = false;
+
+
+/**
+ * 更新function组件
+ * @param {Fiber} current 
+ * @param {Fiber} workInProgress 
+ * @param {Function} Component 
+ * @param {Object} nextProps 
+ * @param {ExpirationTime} renderExpirationTime 
+ */
+function updateFunctionComponent(current, workInProgress, Component, nextProps, renderExpirationTime) {
+  let context;
+  if (!disableLegacyContext) {
+    const unmaskedContext = getUnmaskedContext(workInProgress, Component, true);
+    context = getMaskedContext(workInProgress, unmaskedContext);
+  }
+
+  let nextChildren;
+  prepareToReadContext(workInProgress, renderExpirationTime);
+}
 
 
 /**
@@ -230,7 +251,8 @@ export function beginWork(current, workInProgress, renderExpirationTime) {
     case FuncationComponent: {
       const Component = workInProgress.type;
       const unresolvedProps = workInProgress.pendingProps;
-      const resolvedProps = 
+      const resolvedProps = workInProgress.elementType === Component ? unresolvedProps : resolveDefaultProps(Component, unresolvedProps);
+      return updateFunctionComponent(current, workInProgress, Component, resolvedProps, renderExpirationTime);
     }
   }
 }

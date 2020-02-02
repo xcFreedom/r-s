@@ -53,12 +53,17 @@ export function popProvider(providerFiber) {
  * @param {ExpirationTime} renderExpirationTime 
  */
 export function prepareToReadContext(workInProgress, renderExpirationTime) {
+  // 记录当前渲染的fiber
   currentlyRenderingFiber = workInProgress;
+  // 将context置空
   lastContextDependency = null;
+  // bitsObserved置空
   lastContextWithAllBitsObserved = null;
 
+  // 获取workInProgress的依赖
   const dependencies = workInProgress.dependencies;
   if (dependencies !== null) {
+    // 如果dependencies上存在context饮用
     const firstContext = dependencies.firstContext;
     if (firstContext !== null) {
       if (dependencies.expirationTime >= renderExpirationTime) {
